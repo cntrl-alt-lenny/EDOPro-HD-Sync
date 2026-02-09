@@ -1,0 +1,46 @@
+name: Build EDOPro HD Sync
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: EDOPro-HD-Sync.exe
+            asset_name: EDOPro-HD-Sync-Windows.exe
+          - os: macos-latest
+            artifact_name: EDOPro-HD-Sync
+            asset_name: EDOPro-HD-Sync-macOS
+          - os: ubuntu-latest
+            artifact_name: EDOPro-HD-Sync
+            asset_name: EDOPro-HD-Sync-Linux
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11' 
+
+    - name: Install Dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --onefile --name EDOPro-HD-Sync main.py
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.asset_name }}
+        path: dist/${{ matrix.artifact_name }}
