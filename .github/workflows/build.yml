@@ -1,10 +1,14 @@
 name: Build and Release
 
+# THIS IS THE MISSING PIECE!
+permissions:
+  contents: write
+
 on:
   push:
     tags:
-      - 'v*' # Triggers only when you push a tag like v1.0, v2.0, etc.
-  workflow_dispatch: # Allows you to run it manually if needed
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -32,21 +36,22 @@ jobs:
         python-version: '3.11' 
 
     - name: Install Dependencies
+      shell: bash
       run: |
         pip install -r requirements.txt
         pip install pyinstaller
 
     - name: Build with PyInstaller
+      shell: bash
       run: |
         pyinstaller --onefile --name EDOPro-HD-Sync main.py
 
-    # Rename the file so it has the OS name in it (e.g., -Windows.exe)
     - name: Rename Output
+      shell: bash
       run: |
         cd dist
         mv ${{ matrix.artifact_name }} ${{ matrix.asset_name }}
 
-    # Upload to the Releases Page
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
