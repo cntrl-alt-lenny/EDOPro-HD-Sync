@@ -3,116 +3,193 @@ import sqlite3
 import asyncio
 import aiohttp
 import sys
+import json
 
-# Constants
+# --- CONFIGURATION ---
 EDOPRO_PATH = "." 
-DB_PATH = os.path.join(EDOPRO_PATH, "expansions", "cards.cdb")
-CORE_DB_PATH = os.path.join(EDOPRO_PATH, "cards.cdb")
 PICS_PATH = os.path.join(EDOPRO_PATH, "pics")
+MANUAL_MAP_FILE = "manual_map.json"
 
-# URL SOURCES (The Secret Sauce)
-# We try these in order. If #1 fails, we try #2, then #3.
-URL_SOURCES = [
-    # 1. Official High-Quality Art (Standard Cards)
-    "https://images.ygoprodeck.com/images/cards",
-    
-    # 2. Project Ignis Pre-Errata / GOAT Art (For IDs like 511000818)
-    "https://raw.githubusercontent.com/ProjectIgnis/Card-Patcher/master/pics",
-    
-    # 3. Project Ignis General Backup (Anime cards, etc)
-    "https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics" 
+# URL SOURCES
+URL_SOURCES = {
+    "official": "https://images.ygoprodeck.com/images/cards",
+    "backup": "https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics"
+}
+
+# THE MAGIC LIST (Based on your discovery)
+SUFFIXES_TO_STRIP = [
+    " GOAT", 
+    " (Pre-Errata)",
+    " (GOAT)",
+    " Pre-Errata"
 ]
 
 CONCURRENCY_LIMIT = 50 
 
-async def get_all_ids_from_db(db_file):
-    """Connects to the local EDOPro database to find exactly what cards this game has."""
-    if not os.path.exists(db_file):
-        return []
-    
-    try:
-        conn = sqlite3.connect(db_file)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM datas")
-        ids = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        return ids
-    except Exception as e:
-        print(f"Error reading DB {db_file}: {e}")
-        return []
+# --- HELPERS ---
 
-async def download_image(session, card_id, semaphore):
-    """Downloads a single image, trying multiple sources if the first one fails."""
+def get_db_files():
+    """Finds all .cdb files in root and expansions."""
+    dbs = []
+    if os.path.exists("cards.cdb"):
+        dbs.append("cards.cdb")
+    exp_path = os.path.join(EDOPRO_PATH, "expansions")
+    if os.path.exists(exp_path):
+        for f in os.listdir(exp_path):
+            if f.endswith(".cdb"):
+                dbs.append(os.path.join(exp_path, f))
+    return dbs
+
+def load_manual_map():
+    if os.path.exists(MANUAL_MAP_FILE):
+        try:
+            with open(MANUAL_MAP_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def scan_databases_for_names(db_files):
+    id_to_name = {}
+    name_to_official_id = {}
+    
+    print("Building Name Index...")
+    
+    for db in db_files:
+        try:
+            conn = sqlite3.connect(db)
+            cursor = conn.cursor()
+            cursor.execute("SELECT d.id, t.name FROM datas d INNER JOIN texts t ON d.id = t.id")
+            rows = cursor.fetchall()
+            conn.close()
+
+            for r in rows:
+                card_id = r[0]
+                name = r[1]
+                id_to_name[card_id] = name
+                
+                # If it's an official Konami ID (usually < 100 million), index it as a source of truth
+                if card_id < 100000000: 
+                    if name not in name_to_official_id:
+                        name_to_official_id[name] = card_id
+                        
+        except Exception as e:
+            print(f"⚠️ Error scanning {db}: {e}")
+            
+    return id_to_name, name_to_official_id
+
+def find_official_match(name, name_to_official_id):
+    """
+    Tries to find the official ID for a given name.
+    1. Exact Match
+    2. Suffix Strip Match (The 'Leo Fix')
+    """
+    # 1. Exact Match
+    if name in name_to_official_id:
+        return name_to_official_id[name]
+
+    # 2. Suffix Strip Match
+    for suffix in SUFFIXES_TO_STRIP:
+        if name.endswith(suffix):
+            clean_name = name.replace(suffix, "")
+            if clean_name in name_to_official_id:
+                return name_to_official_id[clean_name]
+    
+    return None
+
+# --- DOWNLOAD LOGIC ---
+
+async def download_worker(session, card_id, name, official_match_id, manual_match_id, semaphore):
     filename = f"{card_id}.jpg"
     filepath = os.path.join(PICS_PATH, filename)
 
     if os.path.exists(filepath):
-        return 
+        return
 
-    async with semaphore: 
-        # Try every URL in our list
-        for base_url in URL_SOURCES:
-            url = f"{base_url}/{filename}"
-            try:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        content = await response.read()
-                        with open(filepath, 'wb') as f:
-                            f.write(content)
-                        # Nice logging to show where it came from
-                        source_name = "YGOProDeck" if "ygoprodeck" in base_url else "Project Ignis (GOAT/Anime)"
-                        print(f"✅ Downloaded: {filename} (from {source_name})")
-                        return # Success! Stop trying other URLs.
-            except Exception as e:
-                pass # Just try the next URL
+    async with semaphore:
+        # STRATEGY 1: Manual Override
+        if manual_match_id:
+            url = f"{URL_SOURCES['official']}/{manual_match_id}.jpg"
+            if await try_download(session, url, filepath):
+                print(f"✅ {name}: Mapped manually ({card_id} -> {manual_match_id})")
+                return
 
-        # If we get here, no URL worked
-        print(f"❌ Failed to find image for ID: {card_id}")
+        # STRATEGY 2: Smart Name Match (Official HD)
+        if official_match_id:
+            url = f"{URL_SOURCES['official']}/{official_match_id}.jpg"
+            if await try_download(session, url, filepath):
+                # We save the Official HD image as the GOAT ID filename
+                print(f"✅ {name}: Auto-Mapped to HD Art ({card_id} -> {official_match_id})")
+                return
+
+        # STRATEGY 3: Last Resort (Project Ignis Low Res)
+        url = f"{URL_SOURCES['backup']}/{card_id}.jpg"
+        if await try_download(session, url, filepath):
+            print(f"⚠️ {name}: Fallback to Low-Res ({card_id})")
+            return
+            
+        print(f"❌ {name}: No image found.")
+
+async def try_download(session, url, filepath):
+    try:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                content = await resp.read()
+                with open(filepath, 'wb') as f:
+                    f.write(content)
+                return True
+    except:
+        pass
+    return False
+
+# --- MAIN ---
 
 async def main():
-    print("--- EDOPro HD Sync (Ultimate Edition) ---")
+    print("--- EDOPro HD Sync (Suffix-Stripper Edition) ---")
     
+    # 0. Test Cleanup
+    test_file = os.path.join(PICS_PATH, "511000818.jpg")
+    if os.path.exists(test_file):
+        os.remove(test_file)
+        print("🧹 Cleaned up 511000818.jpg for testing.")
+
     if not os.path.exists(PICS_PATH):
         os.makedirs(PICS_PATH)
 
-    all_ids = set()
+    # 1. Load Data
+    dbs = get_db_files()
+    id_to_name, name_to_official_id = scan_databases_for_names(dbs)
+    manual_map = load_manual_map()
     
-    # 1. Read Core DB
-    if os.path.exists(CORE_DB_PATH):
-        print("Reading core database...")
-        all_ids.update(await get_all_ids_from_db(CORE_DB_PATH))
-        
-    # 2. Read Expansions (CRITICAL for GOAT/Pre-Errata)
-    expansions_dir = os.path.join(EDOPRO_PATH, "expansions")
-    if os.path.exists(expansions_dir):
-        for file in os.listdir(expansions_dir):
-            if file.endswith(".cdb"):
-                print(f"Reading expansion: {file}...")
-                all_ids.update(await get_all_ids_from_db(os.path.join(expansions_dir, file)))
+    print(f"Indexed {len(id_to_name)} total cards.")
+    print(f"Indexed {len(name_to_official_id)} official HD candidates.")
 
-    print(f"Found {len(all_ids)} unique card IDs.")
-
-    # DEBUG: Check specifically for Sinister Serpent (GOAT)
-    if 511000818 in all_ids:
-        print("👀 SPOTTED: Sinister Serpent (GOAT Version) is in your database.")
-    else:
-        print("⚠️ WARNING: Sinister Serpent (GOAT Version) was NOT found in your DBs.")
-
-    missing_ids = [_id for _id in all_ids if not os.path.exists(os.path.join(PICS_PATH, f"{_id}.jpg"))]
-    print(f"Missing images for {len(missing_ids)} cards.")
+    # 2. Find Missing
+    missing_ids = [cid for cid in id_to_name.keys() if not os.path.exists(os.path.join(PICS_PATH, f"{cid}.jpg"))]
+    print(f"Missing images: {len(missing_ids)}")
     
     if not missing_ids:
-        print("All cards synced!")
+        print("All synced!")
         return
 
-    print("Starting Multi-Source Download...")
+    # 3. Download
+    print("Starting download...")
     semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
-    
     async with aiohttp.ClientSession() as session:
-        tasks = [download_image(session, _id, semaphore) for _id in missing_ids]
+        tasks = []
+        for cid in missing_ids:
+            name = id_to_name[cid]
+            
+            # THE FIX: Run the name through the suffix stripper
+            official_match = find_official_match(name, name_to_official_id)
+            
+            manual_match = manual_map.get(str(cid))
+            
+            tasks.append(download_worker(session, cid, name, official_match, manual_match, semaphore))
+            
         await asyncio.gather(*tasks)
 
-    print("\nDone! Your EDOPro is now HD ready.")
+    print("\nDone.")
 
 if __name__ == "__main__":
     if sys.platform == 'win32':
