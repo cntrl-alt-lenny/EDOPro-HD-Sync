@@ -1,9 +1,10 @@
-name: Build EDOPro HD Sync
+name: Build and Release
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    tags:
+      - 'v*' # Triggers only when you push a tag like v1.0, v2.0, etc.
+  workflow_dispatch: # Allows you to run it manually if needed
 
 jobs:
   build:
@@ -39,8 +40,15 @@ jobs:
       run: |
         pyinstaller --onefile --name EDOPro-HD-Sync main.py
 
-    - name: Upload Build Artifact
-      uses: actions/upload-artifact@v4
+    # Rename the file so it has the OS name in it (e.g., -Windows.exe)
+    - name: Rename Output
+      run: |
+        cd dist
+        mv ${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+
+    # Upload to the Releases Page
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
       with:
-        name: ${{ matrix.asset_name }}
-        path: dist/${{ matrix.artifact_name }}
+        files: dist/${{ matrix.asset_name }}
