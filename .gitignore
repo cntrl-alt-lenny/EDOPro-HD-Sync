@@ -1,0 +1,14 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+venv/
+
+# Mac artifacts
+.DS_Store
+
+# EDOPro Game Files (IMPORTANT: Ignore these so they don't go to GitHub)
+pics/
+*.cdb
+*.ydk
+/expansions/
+EDOPro.exe
