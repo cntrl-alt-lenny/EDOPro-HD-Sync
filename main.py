@@ -55,7 +55,7 @@ else:
 
     console = _FallbackConsole()
 
-VERSION = "3.0.0"
+VERSION = "3.3.0"
 
 
 # ── Database scanning ─────────────────────────────────────────────────────────
@@ -196,7 +196,6 @@ async def download_card(
     manual_match: str | None,
     cfg: Config,
     stats: DownloadStats,
-    semaphore: asyncio.Semaphore,
     progress=None,
     task_id=None,
 ) -> None:
@@ -219,47 +218,46 @@ async def download_card(
 
     timeout = aiohttp.ClientTimeout(total=cfg.timeout)
 
-    async with semaphore:
-        # Strategy 1 — Manual override
-        if manual_match:
-            url = f"{cfg.sources['official']}/{manual_match}.jpg"
-            if await _try_download(session, url, filepath, timeout, cfg.max_retries):
-                stats.ok_mapped += 1
-                if progress and task_id is not None:
-                    progress.advance(task_id)
-                return
+    # Strategy 1 — Manual override
+    if manual_match:
+        url = f"{cfg.sources['official']}/{manual_match}.jpg"
+        if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+            stats.ok_mapped += 1
+            if progress and task_id is not None:
+                progress.advance(task_id)
+            return
 
-        # Strategy 2 — Smart name-matched HD art
-        if official_match and official_match != card_id:
-            url = f"{cfg.sources['official']}/{official_match}.jpg"
-            if await _try_download(session, url, filepath, timeout, cfg.max_retries):
-                stats.ok_hd += 1
-                if progress and task_id is not None:
-                    progress.advance(task_id)
-                return
-
-        # Strategy 3 — Direct ID on official source
-        url = f"{cfg.sources['official']}/{card_id}.jpg"
+    # Strategy 2 — Smart name-matched HD art
+    if official_match and official_match != card_id:
+        url = f"{cfg.sources['official']}/{official_match}.jpg"
         if await _try_download(session, url, filepath, timeout, cfg.max_retries):
             stats.ok_hd += 1
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
 
-        # Strategy 4 — Low-res fallback (Project Ignis)
-        if "backup" in cfg.sources:
-            url = f"{cfg.sources['backup']}/{card_id}.jpg"
-            if await _try_download(session, url, filepath, timeout, cfg.max_retries):
-                stats.ok_fallback += 1
-                if progress and task_id is not None:
-                    progress.advance(task_id)
-                return
-
-        # All strategies exhausted
-        stats.failed += 1
-        stats.failed_cards.append((card_id, name))
+    # Strategy 3 — Direct ID on official source
+    url = f"{cfg.sources['official']}/{card_id}.jpg"
+    if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+        stats.ok_hd += 1
         if progress and task_id is not None:
             progress.advance(task_id)
+        return
+
+    # Strategy 4 — Low-res fallback (Project Ignis)
+    if "backup" in cfg.sources:
+        url = f"{cfg.sources['backup']}/{card_id}.jpg"
+        if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+            stats.ok_fallback += 1
+            if progress and task_id is not None:
+                progress.advance(task_id)
+            return
+
+    # All strategies exhausted
+    stats.failed += 1
+    stats.failed_cards.append((card_id, name))
+    if progress and task_id is not None:
+        progress.advance(task_id)
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────
@@ -373,11 +371,34 @@ async def run(cfg: Config):
 
     # 4. Download with progress
     stats = DownloadStats()
-    semaphore = asyncio.Semaphore(cfg.concurrency)
+
+    # Build a queue of all card IDs to process.
+    # A fixed pool of `concurrency` workers drains it — this keeps exactly
+    # N tasks active at a time instead of creating one coroutine per card.
+    queue: asyncio.Queue[int] = asyncio.Queue()
+    for cid in missing_ids:
+        queue.put_nowait(cid)
 
     connector = aiohttp.TCPConnector(limit=cfg.concurrency, enable_cleanup_closed=True)
 
     async with aiohttp.ClientSession(connector=connector) as session:
+
+        def make_worker(progress=None, task_id=None):
+            async def worker():
+                while True:
+                    try:
+                        cid = queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        return
+                    name = id_to_name[cid]
+                    official = find_official_match(name, name_to_official, cfg.suffixes)
+                    manual = manual_map.get(str(cid))
+                    await download_card(
+                        session, cid, name, official, manual,
+                        cfg, stats, progress, task_id,
+                    )
+            return worker
+
         if RICH_AVAILABLE and not cfg.quiet:
             with Progress(
                 SpinnerColumn(),
@@ -388,33 +409,11 @@ async def run(cfg: Config):
                 console=console,
             ) as progress:
                 task_id = progress.add_task("Syncing…", total=len(missing_ids))
-
-                tasks = []
-                for cid in missing_ids:
-                    name = id_to_name[cid]
-                    official = find_official_match(name, name_to_official, cfg.suffixes)
-                    manual = manual_map.get(str(cid))
-                    tasks.append(
-                        download_card(
-                            session, cid, name, official, manual,
-                            cfg, stats, semaphore, progress, task_id,
-                        )
-                    )
-                await asyncio.gather(*tasks)
+                workers = [make_worker(progress, task_id)() for _ in range(cfg.concurrency)]
+                await asyncio.gather(*workers)
         else:
-            # Quiet mode or no rich — just run silently
-            tasks = []
-            for cid in missing_ids:
-                name = id_to_name[cid]
-                official = find_official_match(name, name_to_official, cfg.suffixes)
-                manual = manual_map.get(str(cid))
-                tasks.append(
-                    download_card(
-                        session, cid, name, official, manual,
-                        cfg, stats, semaphore,
-                    )
-                )
-            await asyncio.gather(*tasks)
+            workers = [make_worker()() for _ in range(cfg.concurrency)]
+            await asyncio.gather(*workers)
 
     # 5. Summary
     print_summary(stats, len(missing_ids), cfg)
