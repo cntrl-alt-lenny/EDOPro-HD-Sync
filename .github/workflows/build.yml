@@ -19,6 +19,7 @@ jobs:
           - os: windows-latest
             release_path: dist/EDOPro-HD-Sync-Windows.exe
           - os: macos-latest
+            release_path: dist/EDOPro-HD-Sync-macOS.zip
           - os: ubuntu-latest
             release_path: dist/EDOPro-HD-Sync-Linux.AppImage
 
@@ -47,13 +48,15 @@ jobs:
       shell: bash
       run: mv dist/EDOPro-HD-Sync.exe dist/EDOPro-HD-Sync-Windows.exe
 
-    # ── macOS: rename binary; .command bootstrapper lives in the repo ─────────
+    # ── macOS: zip binary + launcher together (zip preserves execute bit) ─────
     - name: Package (macOS)
       if: matrix.os == 'macos-latest'
       shell: bash
       run: |
         mv dist/EDOPro-HD-Sync dist/EDOPro-HD-Sync-macOS
         chmod +x dist/EDOPro-HD-Sync-macOS
+        # -j flattens paths so both files sit at the root of the zip
+        zip -j dist/EDOPro-HD-Sync-macOS.zip dist/EDOPro-HD-Sync-macOS EDOPro-HD-Sync.command
 
     # ── Linux: AppImage (single double-clickable file) ────────────────────────
     - name: Package (Linux)
@@ -98,17 +101,8 @@ jobs:
 
         APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 ./appimagetool AppDir dist/EDOPro-HD-Sync-Linux.AppImage
 
-    # ── Release: Windows & Linux upload one file; macOS uploads binary + launcher
-    - name: Release (Windows / Linux)
+    - name: Release
       uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/') && matrix.os != 'macos-latest'
+      if: startsWith(github.ref, 'refs/tags/')
       with:
         files: ${{ matrix.release_path }}
-
-    - name: Release (macOS)
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'macos-latest'
-      with:
-        files: |
-          dist/EDOPro-HD-Sync-macOS
-          EDOPro-HD-Sync.command
