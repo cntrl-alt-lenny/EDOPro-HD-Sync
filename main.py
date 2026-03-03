@@ -57,7 +57,7 @@ else:
 
     console = _FallbackConsole()
 
-VERSION = "3.6.0"
+VERSION = "3.7.0"
 
 
 # ── Database scanning ─────────────────────────────────────────────────────────
@@ -148,6 +148,7 @@ class DownloadStats:
     def __init__(self):
         self.ok_hd = 0         # Downloaded via official HD
         self.ok_mapped = 0     # Downloaded via manual map
+        self.ok_rush = 0       # Downloaded via Rush Duel source
         self.ok_fallback = 0   # Downloaded via backup / low-res
         self.skipped = 0       # Already existed
         self.failed = 0        # Could not download at all
@@ -155,7 +156,7 @@ class DownloadStats:
 
     @property
     def total_ok(self) -> int:
-        return self.ok_hd + self.ok_mapped + self.ok_fallback
+        return self.ok_hd + self.ok_mapped + self.ok_rush + self.ok_fallback
 
 
 async def _try_download(
@@ -260,7 +261,17 @@ async def download_card(
                 progress.advance(task_id)
             return
 
-    # Strategy 4 — Low-res fallback (Project Ignis)
+    # Strategy 4 — Rush Duel source (rushcard.io)
+    # Rush Duel cards aren't on ygoprodeck; rushcard.io hosts their artwork.
+    if "rush" in cfg.sources:
+        url = f"{cfg.sources['rush']}/{card_id}.jpg"
+        if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+            stats.ok_rush += 1
+            if progress and task_id is not None:
+                progress.advance(task_id)
+            return
+
+    # Strategy 5 — Low-res fallback (Project Ignis)
     if "backup" in cfg.sources:
         url = f"{cfg.sources['backup']}/{card_id}.jpg"
         if await _try_download(session, url, filepath, timeout, cfg.max_retries):
@@ -279,7 +290,7 @@ async def download_card(
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 def print_summary(stats: DownloadStats, total_missing: int, cfg: Config):
-    """Print a colour-coded results table at the end."""
+    """Print a colour-coded results table and write a log of failed cards."""
     if RICH_AVAILABLE:
         table = Table(title="Sync Summary", show_header=False, border_style="dim")
         table.add_column("Metric", style="bold")
@@ -291,6 +302,7 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config):
         else:
             table.add_row("✅ HD artwork", str(stats.ok_hd), style="green")
             table.add_row("✅ Manual-mapped", str(stats.ok_mapped), style="green")
+            table.add_row("✅ Rush Duel", str(stats.ok_rush), style="green")
             table.add_row("⚠️  Low-res fallback", str(stats.ok_fallback), style="yellow")
             table.add_row("⏭️  Already existed", str(stats.skipped), style="dim")
             table.add_row("❌ Failed", str(stats.failed), style="red" if stats.failed else "dim")
@@ -309,10 +321,29 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config):
         print(f"\n{'─'*40}")
         print(f"  HD artwork:       {stats.ok_hd}")
         print(f"  Manual-mapped:    {stats.ok_mapped}")
+        print(f"  Rush Duel:        {stats.ok_rush}")
         print(f"  Low-res fallback: {stats.ok_fallback}")
         print(f"  Already existed:  {stats.skipped}")
         print(f"  Failed:           {stats.failed}")
         print(f"{'─'*40}")
+
+    # Write failed cards to a log file
+    if stats.failed_cards and not cfg.dry_run:
+        log_path = os.path.join(cfg.edopro_path, "sync-failed.txt")
+        try:
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write(f"EDOPro HD Sync — cards with no artwork found ({len(stats.failed_cards)} total)\n")
+                f.write("These are usually custom/fan-made cards with no official artwork source.\n")
+                f.write("─" * 60 + "\n")
+                for cid, cname in stats.failed_cards:
+                    f.write(f"{cid}\t{cname}\n")
+            console.print(
+                f"[dim]Failed card list saved to: {log_path}[/dim]"
+                if RICH_AVAILABLE
+                else f"Failed card list saved to: {log_path}"
+            )
+        except OSError:
+            pass  # Not critical if the log can't be written
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
