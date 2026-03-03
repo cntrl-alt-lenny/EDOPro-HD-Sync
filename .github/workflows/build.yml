@@ -14,6 +14,7 @@ jobs:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false   # keep building other platforms if one fails
       matrix:
         include:
           - os: windows-latest
@@ -40,7 +41,7 @@ jobs:
     - name: Build with PyInstaller
       shell: bash
       run: |
-        pyinstaller --onefile --name EDOPro-HD-Sync main.py
+        pyinstaller --onefile --name EDOPro-HD-Sync --collect-data certifi main.py
 
     # ── Windows: rename to .exe ───────────────────────────────────────────────
     - name: Package (Windows)

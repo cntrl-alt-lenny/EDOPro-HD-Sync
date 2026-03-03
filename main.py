@@ -9,11 +9,13 @@ Improvements over the original:
 """
 
 import os
+import ssl
 import sys
 import json
 import sqlite3
 import asyncio
 import aiohttp
+import certifi
 
 from config import Config
 
@@ -55,7 +57,7 @@ else:
 
     console = _FallbackConsole()
 
-VERSION = "3.5.0"
+VERSION = "3.6.0"
 
 
 # ── Database scanning ─────────────────────────────────────────────────────────
@@ -399,9 +401,40 @@ async def run(cfg: Config):
     for cid in missing_ids:
         queue.put_nowait(cid)
 
-    connector = aiohttp.TCPConnector(limit=cfg.concurrency, enable_cleanup_closed=True)
+    ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+    connector = aiohttp.TCPConnector(
+        limit=cfg.concurrency,
+        enable_cleanup_closed=True,
+        ssl=ssl_ctx,
+    )
 
     async with aiohttp.ClientSession(connector=connector) as session:
+        # Quick connectivity check before the main loop
+        try:
+            test_timeout = aiohttp.ClientTimeout(total=8)
+            async with session.get(
+                f"{cfg.sources['official']}/46986414.jpg",
+                timeout=test_timeout,
+            ) as resp:
+                if resp.status == 200:
+                    console.print(
+                        "[dim green]✓ Connected to image server[/dim green]"
+                        if RICH_AVAILABLE
+                        else "✓ Connected to image server"
+                    )
+                else:
+                    console.print(
+                        f"[yellow]⚠ Image server returned HTTP {resp.status} — downloads may fail[/yellow]"
+                        if RICH_AVAILABLE
+                        else f"⚠ Image server returned HTTP {resp.status}"
+                    )
+        except Exception as exc:
+            console.print(
+                f"[bold red]✗ Cannot reach image server: {exc}\n"
+                "  Check your internet connection — downloads will fail.[/bold red]"
+                if RICH_AVAILABLE
+                else f"✗ Cannot reach image server: {exc}"
+            )
 
         def make_worker(progress=None, task_id=None):
             async def worker():
