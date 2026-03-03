@@ -16,8 +16,8 @@ import os
 DEFAULTS = {
     "edopro_path": ".",
     "concurrency": 50,
-    "max_retries": 3,
-    "timeout": 30,
+    "max_retries": 2,
+    "timeout": 10,
     "sources": {
         "official": "https://images.ygoprodeck.com/images/cards",
         "backup": "https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics",
@@ -81,13 +81,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--max-retries",
         type=int,
         default=None,
-        help="Retry failed downloads N times (default: 3).",
+        help="Retry failed downloads N times (default: 2).",
     )
     p.add_argument(
         "--timeout",
         type=int,
         default=None,
-        help="HTTP timeout in seconds (default: 30).",
+        help="HTTP timeout in seconds (default: 10).",
     )
     p.add_argument(
         "--config",

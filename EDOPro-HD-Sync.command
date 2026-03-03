@@ -16,6 +16,10 @@ if [ ! -f "$BINARY" ]; then
     echo ""
 fi
 
+# Clear the macOS quarantine flag from the binary so it runs without
+# triggering a second (or third) Gatekeeper security warning.
+xattr -d com.apple.quarantine "$BINARY" 2>/dev/null
+
 ./"$BINARY" "$@"
 
 echo ""
