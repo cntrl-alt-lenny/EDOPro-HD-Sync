@@ -20,7 +20,28 @@ fi
 # triggering a second (or third) Gatekeeper security warning.
 xattr -d com.apple.quarantine "$BINARY" 2>/dev/null
 
-./"$BINARY" "$@"
+# ── Menu ──────────────────────────────────────────────────────────────────────
+echo ""
+echo "  ╔══════════════════════════════════════╗"
+echo "  ║        EDOPro HD Sync Launcher       ║"
+echo "  ╠══════════════════════════════════════╣"
+echo "  ║  1) Sync missing cards  (default)    ║"
+echo "  ║  2) Force re-download all cards      ║"
+echo "  ║  3) Preview only — no downloading    ║"
+echo "  ║  4) Generate a config file           ║"
+echo "  ╚══════════════════════════════════════╝"
+echo ""
+read -rp "  Choose [1-4] or press Enter for default: " choice
+echo ""
+
+case "$choice" in
+    2) FLAGS="--force" ;;
+    3) FLAGS="--dry-run" ;;
+    4) FLAGS="--generate-config" ;;
+    *) FLAGS="" ;;
+esac
+
+./"$BINARY" $FLAGS
 
 echo ""
 read -rp "Press Enter to close this window..."
