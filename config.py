@@ -20,7 +20,6 @@ DEFAULTS = {
     "timeout": 10,
     "sources": {
         "official": "https://images.ygoprodeck.com/images/cards",
-        "rush": "https://images.rushcard.io/images/card",
         "backup": "https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics",
     },
     "suffixes_to_strip": [

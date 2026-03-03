@@ -38,13 +38,11 @@ From these it builds two maps:
 1. **Manual override** — `manual_map.json` lets users pin specific card IDs
 2. **Name-matched HD** — strips GOAT/Pre-Errata suffixes, looks up the real card's ID on ygoprodeck
 3. **Direct ID on ygoprodeck** — `https://images.ygoprodeck.com/images/cards/{id}.jpg` (skipped for IDs ≥ 100M, which ygoprodeck never has)
-4. **Rush Duel source** — `https://images.rushcard.io/images/card/{id}.jpg` (for Rush Duel cards not on ygoprodeck)
-5. **ProjectIgnis backup** — `https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics/{id}.jpg`
+4. **ProjectIgnis backup** — `https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics/{id}.jpg`
 
 ### Card ID rules
 - IDs < 100,000,000 → official Konami cards (ygoprodeck has them)
-- IDs ≥ 100,000,000 → custom/fan/unofficial cards (skip ygoprodeck, try rush + backup only)
-- Rush Duel cards use IDs roughly in the 10,000,000–99,999,999 range
+- IDs ≥ 100,000,000 → custom/fan/unofficial cards (skip ygoprodeck, try backup only)
 
 ### GOAT / Pre-Errata trick
 Cards like "Dark Magician GOAT" have a custom DB ID but the same artwork as "Dark Magician". The suffix-stripping logic removes known suffixes (` GOAT`, ` (Pre-Errata)`, etc.) and looks up the base name in `name_to_official` to find the real Konami ID, then downloads that HD image for the custom card's ID.
