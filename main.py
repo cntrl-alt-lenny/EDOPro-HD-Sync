@@ -55,7 +55,7 @@ else:
 
     console = _FallbackConsole()
 
-VERSION = "3.4.0"
+VERSION = "3.5.0"
 
 
 # ── Database scanning ─────────────────────────────────────────────────────────
@@ -183,6 +183,14 @@ async def _try_download(
                 # 5xx or transient — fall through to retry
         except (aiohttp.ClientError, asyncio.TimeoutError):
             pass
+        except OSError as exc:
+            # Disk/permission error writing the file — report once and give up
+            console.print(
+                f"[red]Cannot write to {filepath}: {exc}[/red]"
+                if RICH_AVAILABLE
+                else f"Cannot write to {filepath}: {exc}"
+            )
+            return False
 
         # Exponential backoff: 1s, 2s, 4s …
         if attempt < max_retries:
@@ -322,6 +330,12 @@ async def run(cfg: Config):
 
     # Ensure pics/ exists
     os.makedirs(cfg.pics_path, exist_ok=True)
+    abs_pics = os.path.abspath(cfg.pics_path)
+    console.print(
+        f"[dim]Saving images to:[/dim] [bold]{abs_pics}[/bold]"
+        if RICH_AVAILABLE
+        else f"Saving images to: {abs_pics}"
+    )
 
     # 1. Discover databases
     dbs = get_db_files(cfg.edopro_path)
