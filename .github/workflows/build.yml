@@ -55,7 +55,10 @@ jobs:
       run: |
         mv dist/EDOPro-HD-Sync dist/EDOPro-HD-Sync-macOS
         chmod +x dist/EDOPro-HD-Sync-macOS
+        chmod +x EDOPro-HD-Sync.command
         # -j flattens paths so both files sit at the root of the zip
+        # zip on macOS preserves Unix permissions, so the execute bit on
+        # .command survives the download → unzip journey
         zip -j dist/EDOPro-HD-Sync-macOS.zip dist/EDOPro-HD-Sync-macOS EDOPro-HD-Sync.command
 
     # ── Linux: AppImage (single double-clickable file) ────────────────────────
