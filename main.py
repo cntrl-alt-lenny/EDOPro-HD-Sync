@@ -1,197 +1,440 @@
+"""
+EDOPro HD Sync — Automatically download missing HD card artwork for EDOPro.
+
+Improvements over the original:
+  • Rich progress bars and colour-coded console output
+  • Automatic retries with exponential backoff on failed downloads
+  • Configurable via config.json and CLI arguments
+  • Detailed summary report at the end
+"""
+
 import os
+import sys
+import json
 import sqlite3
 import asyncio
 import aiohttp
-import sys
-import json
 
-# --- CONFIGURATION ---
-EDOPRO_PATH = "." 
-PICS_PATH = os.path.join(EDOPRO_PATH, "pics")
-MANUAL_MAP_FILE = "manual_map.json"
+from config import Config
 
-# URL SOURCES
-URL_SOURCES = {
-    "official": "https://images.ygoprodeck.com/images/cards",
-    "backup": "https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics"
-}
+# ── Rich console setup ────────────────────────────────────────────────────────
+# We import rich here so the rest of the file can use `console` everywhere.
 
-# THE MAGIC LIST (Based on your discovery)
-SUFFIXES_TO_STRIP = [
-    " GOAT", 
-    " (Pre-Errata)",
-    " (GOAT)",
-    " Pre-Errata"
-]
+try:
+    from rich.console import Console
+    from rich.progress import (
+        Progress,
+        BarColumn,
+        TextColumn,
+        MofNCompleteColumn,
+        TimeRemainingColumn,
+        SpinnerColumn,
+    )
+    from rich.table import Table
+    from rich.panel import Panel
 
-CONCURRENCY_LIMIT = 50 
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
 
-# --- HELPERS ---
+# Thin wrapper so the code never crashes if rich is missing.
+if RICH_AVAILABLE:
+    console = Console()
+else:
+    class _FallbackConsole:
+        """Bare-minimum stand-in when rich is not installed."""
+        @staticmethod
+        def print(*args, **kwargs):
+            kwargs.pop("style", None)
+            kwargs.pop("highlight", None)
+            print(*args, **kwargs)
 
-def get_db_files():
-    """Finds all .cdb files in root and expansions."""
-    dbs = []
-    if os.path.exists("cards.cdb"):
-        dbs.append("cards.cdb")
-    exp_path = os.path.join(EDOPRO_PATH, "expansions")
-    if os.path.exists(exp_path):
-        for f in os.listdir(exp_path):
+        @staticmethod
+        def rule(title=""):
+            print(f"\n{'─'*20} {title} {'─'*20}\n")
+
+    console = _FallbackConsole()
+
+VERSION = "3.0.0"
+
+
+# ── Database scanning ─────────────────────────────────────────────────────────
+
+def get_db_files(edopro_path: str) -> list[str]:
+    """Find every .cdb file in the EDOPro root and expansions/ folder."""
+    dbs: list[str] = []
+    root_db = os.path.join(edopro_path, "cards.cdb")
+    if os.path.exists(root_db):
+        dbs.append(root_db)
+
+    exp_path = os.path.join(edopro_path, "expansions")
+    if os.path.isdir(exp_path):
+        for f in sorted(os.listdir(exp_path)):
             if f.endswith(".cdb"):
                 dbs.append(os.path.join(exp_path, f))
     return dbs
 
-def load_manual_map():
-    if os.path.exists(MANUAL_MAP_FILE):
-        try:
-            with open(MANUAL_MAP_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            pass
-    return {}
 
-def scan_databases_for_names(db_files):
-    id_to_name = {}
-    name_to_official_id = {}
-    
-    print("Building Name Index...")
-    
+def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, int]]:
+    """
+    Read every .cdb and return two mappings:
+
+      id_to_name       — card_id  →  card name  (every card we know about)
+      name_to_official  — name     →  official id (IDs < 100 000 000 only)
+    """
+    id_to_name: dict[int, str] = {}
+    name_to_official: dict[str, int] = {}
+
     for db in db_files:
         try:
             conn = sqlite3.connect(db)
             cursor = conn.cursor()
-            cursor.execute("SELECT d.id, t.name FROM datas d INNER JOIN texts t ON d.id = t.id")
-            rows = cursor.fetchall()
-            conn.close()
-
-            for r in rows:
-                card_id = r[0]
-                name = r[1]
+            cursor.execute(
+                "SELECT d.id, t.name "
+                "FROM datas d INNER JOIN texts t ON d.id = t.id"
+            )
+            for card_id, name in cursor.fetchall():
                 id_to_name[card_id] = name
-                
-                # If it's an official Konami ID (usually < 100 million), index it as a source of truth
-                if card_id < 100000000: 
-                    if name not in name_to_official_id:
-                        name_to_official_id[name] = card_id
-                        
-        except Exception as e:
-            print(f"⚠️ Error scanning {db}: {e}")
-            
-    return id_to_name, name_to_official_id
+                if card_id < 100_000_000 and name not in name_to_official:
+                    name_to_official[name] = card_id
+            conn.close()
+        except sqlite3.Error as exc:
+            console.print(f"[yellow]⚠️  Error reading {db}: {exc}[/yellow]" if RICH_AVAILABLE else f"⚠️  Error reading {db}: {exc}")
 
-def find_official_match(name, name_to_official_id):
-    """
-    Tries to find the official ID for a given name.
-    1. Exact Match
-    2. Suffix Strip Match (The 'Leo Fix')
-    """
-    # 1. Exact Match
-    if name in name_to_official_id:
-        return name_to_official_id[name]
+    return id_to_name, name_to_official
 
-    # 2. Suffix Strip Match
-    for suffix in SUFFIXES_TO_STRIP:
+
+# ── Name matching ─────────────────────────────────────────────────────────────
+
+def find_official_match(
+    name: str,
+    name_to_official: dict[str, int],
+    suffixes: list[str],
+) -> int | None:
+    """Try to resolve a card name to its official Konami ID."""
+    # 1. Exact match
+    if name in name_to_official:
+        return name_to_official[name]
+    # 2. Suffix-stripped match
+    for suffix in suffixes:
         if name.endswith(suffix):
-            clean_name = name.replace(suffix, "")
-            if clean_name in name_to_official_id:
-                return name_to_official_id[clean_name]
-    
+            clean = name[: -len(suffix)]
+            if clean in name_to_official:
+                return name_to_official[clean]
     return None
 
-# --- DOWNLOAD LOGIC ---
 
-async def download_worker(session, card_id, name, official_match_id, manual_match_id, semaphore):
-    filename = f"{card_id}.jpg"
-    filepath = os.path.join(PICS_PATH, filename)
-
-    if os.path.exists(filepath):
-        return
-
-    async with semaphore:
-        # STRATEGY 1: Manual Override
-        if manual_match_id:
-            url = f"{URL_SOURCES['official']}/{manual_match_id}.jpg"
-            if await try_download(session, url, filepath):
-                print(f"✅ {name}: Mapped manually ({card_id} -> {manual_match_id})")
-                return
-
-        # STRATEGY 2: Smart Name Match (Official HD)
-        if official_match_id:
-            url = f"{URL_SOURCES['official']}/{official_match_id}.jpg"
-            if await try_download(session, url, filepath):
-                # We save the Official HD image as the GOAT ID filename
-                print(f"✅ {name}: Auto-Mapped to HD Art ({card_id} -> {official_match_id})")
-                return
-
-        # STRATEGY 3: Last Resort (Project Ignis Low Res)
-        url = f"{URL_SOURCES['backup']}/{card_id}.jpg"
-        if await try_download(session, url, filepath):
-            print(f"⚠️ {name}: Fallback to Low-Res ({card_id})")
-            return
-            
-        print(f"❌ {name}: No image found.")
-
-async def try_download(session, url, filepath):
+def load_manual_map(path: str) -> dict[str, str]:
+    """Load the optional manual_map.json override file."""
+    if not os.path.exists(path):
+        return {}
     try:
-        async with session.get(url) as resp:
-            if resp.status == 200:
-                content = await resp.read()
-                with open(filepath, 'wb') as f:
-                    f.write(content)
-                return True
-    except:
-        pass
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+# ── Download logic with retries ───────────────────────────────────────────────
+
+class DownloadStats:
+    """Thread-safe-ish counters (fine for asyncio single-thread)."""
+
+    def __init__(self):
+        self.ok_hd = 0         # Downloaded via official HD
+        self.ok_mapped = 0     # Downloaded via manual map
+        self.ok_fallback = 0   # Downloaded via backup / low-res
+        self.skipped = 0       # Already existed
+        self.failed = 0        # Could not download at all
+        self.failed_cards: list[tuple[int, str]] = []
+
+    @property
+    def total_ok(self) -> int:
+        return self.ok_hd + self.ok_mapped + self.ok_fallback
+
+
+async def _try_download(
+    session: aiohttp.ClientSession,
+    url: str,
+    filepath: str,
+    timeout: aiohttp.ClientTimeout,
+    max_retries: int,
+) -> bool:
+    """
+    Attempt to GET `url` and save to `filepath`.
+    Retries up to `max_retries` times with exponential backoff.
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with session.get(url, timeout=timeout) as resp:
+                if resp.status == 200:
+                    content = await resp.read()
+                    # Sanity check: a valid JPEG is > 1 KB typically
+                    if len(content) < 512:
+                        return False
+                    with open(filepath, "wb") as f:
+                        f.write(content)
+                    return True
+                elif resp.status == 404:
+                    return False  # No point retrying a 404
+                # 5xx or transient — fall through to retry
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            pass
+
+        # Exponential backoff: 1s, 2s, 4s …
+        if attempt < max_retries:
+            await asyncio.sleep(2 ** (attempt - 1))
+
     return False
 
-# --- MAIN ---
 
-async def main():
-    print("--- EDOPro HD Sync (Suffix-Stripper Edition) ---")
-    
-    # 0. Test Cleanup
-    test_file = os.path.join(PICS_PATH, "511000818.jpg")
-    if os.path.exists(test_file):
-        os.remove(test_file)
-        print("🧹 Cleaned up 511000818.jpg for testing.")
+async def download_card(
+    session: aiohttp.ClientSession,
+    card_id: int,
+    name: str,
+    official_match: int | None,
+    manual_match: str | None,
+    cfg: Config,
+    stats: DownloadStats,
+    semaphore: asyncio.Semaphore,
+    progress=None,
+    task_id=None,
+) -> None:
+    """Download a single card image using the 3-strategy waterfall."""
+    filepath = os.path.join(cfg.pics_path, f"{card_id}.jpg")
 
-    if not os.path.exists(PICS_PATH):
-        os.makedirs(PICS_PATH)
-
-    # 1. Load Data
-    dbs = get_db_files()
-    id_to_name, name_to_official_id = scan_databases_for_names(dbs)
-    manual_map = load_manual_map()
-    
-    print(f"Indexed {len(id_to_name)} total cards.")
-    print(f"Indexed {len(name_to_official_id)} official HD candidates.")
-
-    # 2. Find Missing
-    missing_ids = [cid for cid in id_to_name.keys() if not os.path.exists(os.path.join(PICS_PATH, f"{cid}.jpg"))]
-    print(f"Missing images: {len(missing_ids)}")
-    
-    if not missing_ids:
-        print("All synced!")
+    # Skip existing (unless --force)
+    if not cfg.force and os.path.exists(filepath):
+        stats.skipped += 1
+        if progress and task_id is not None:
+            progress.advance(task_id)
         return
 
-    # 3. Download
-    print("Starting download...")
-    semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
-    async with aiohttp.ClientSession() as session:
-        tasks = []
-        for cid in missing_ids:
-            name = id_to_name[cid]
-            
-            # THE FIX: Run the name through the suffix stripper
-            official_match = find_official_match(name, name_to_official_id)
-            
-            manual_match = manual_map.get(str(cid))
-            
-            tasks.append(download_worker(session, cid, name, official_match, manual_match, semaphore))
-            
-        await asyncio.gather(*tasks)
+    if cfg.dry_run:
+        tag = "manual-map" if manual_match else ("hd-match" if official_match else "fallback")
+        console.print(f"  [dim]Would download:[/dim] {name} ({card_id}) [{tag}]" if RICH_AVAILABLE else f"  Would download: {name} ({card_id}) [{tag}]")
+        if progress and task_id is not None:
+            progress.advance(task_id)
+        return
 
-    print("\nDone.")
+    timeout = aiohttp.ClientTimeout(total=cfg.timeout)
+
+    async with semaphore:
+        # Strategy 1 — Manual override
+        if manual_match:
+            url = f"{cfg.sources['official']}/{manual_match}.jpg"
+            if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+                stats.ok_mapped += 1
+                if progress and task_id is not None:
+                    progress.advance(task_id)
+                return
+
+        # Strategy 2 — Smart name-matched HD art
+        if official_match and official_match != card_id:
+            url = f"{cfg.sources['official']}/{official_match}.jpg"
+            if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+                stats.ok_hd += 1
+                if progress and task_id is not None:
+                    progress.advance(task_id)
+                return
+
+        # Strategy 3 — Direct ID on official source
+        url = f"{cfg.sources['official']}/{card_id}.jpg"
+        if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+            stats.ok_hd += 1
+            if progress and task_id is not None:
+                progress.advance(task_id)
+            return
+
+        # Strategy 4 — Low-res fallback (Project Ignis)
+        if "backup" in cfg.sources:
+            url = f"{cfg.sources['backup']}/{card_id}.jpg"
+            if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+                stats.ok_fallback += 1
+                if progress and task_id is not None:
+                    progress.advance(task_id)
+                return
+
+        # All strategies exhausted
+        stats.failed += 1
+        stats.failed_cards.append((card_id, name))
+        if progress and task_id is not None:
+            progress.advance(task_id)
+
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+
+def print_summary(stats: DownloadStats, total_missing: int, cfg: Config):
+    """Print a colour-coded results table at the end."""
+    if RICH_AVAILABLE:
+        table = Table(title="Sync Summary", show_header=False, border_style="dim")
+        table.add_column("Metric", style="bold")
+        table.add_column("Count", justify="right")
+
+        if cfg.dry_run:
+            table.add_row("Would download", str(total_missing - stats.skipped))
+            table.add_row("Already on disk", str(stats.skipped))
+        else:
+            table.add_row("✅ HD artwork", str(stats.ok_hd), style="green")
+            table.add_row("✅ Manual-mapped", str(stats.ok_mapped), style="green")
+            table.add_row("⚠️  Low-res fallback", str(stats.ok_fallback), style="yellow")
+            table.add_row("⏭️  Already existed", str(stats.skipped), style="dim")
+            table.add_row("❌ Failed", str(stats.failed), style="red" if stats.failed else "dim")
+
+        console.print()
+        console.print(table)
+
+        if stats.failed_cards and not cfg.quiet:
+            console.print(f"\n[red]Failed cards ({len(stats.failed_cards)}):[/red]")
+            for cid, cname in stats.failed_cards[:20]:
+                console.print(f"  [dim]{cid}[/dim] — {cname}")
+            if len(stats.failed_cards) > 20:
+                console.print(f"  … and {len(stats.failed_cards) - 20} more.")
+    else:
+        # Plain-text fallback
+        print(f"\n{'─'*40}")
+        print(f"  HD artwork:       {stats.ok_hd}")
+        print(f"  Manual-mapped:    {stats.ok_mapped}")
+        print(f"  Low-res fallback: {stats.ok_fallback}")
+        print(f"  Already existed:  {stats.skipped}")
+        print(f"  Failed:           {stats.failed}")
+        print(f"{'─'*40}")
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+async def run(cfg: Config):
+    # Banner
+    if RICH_AVAILABLE:
+        console.print(
+            Panel(
+                f"[bold cyan]EDOPro HD Sync[/bold cyan]  [dim]v{VERSION}[/dim]\n"
+                "Automatic HD artwork downloader for EDOPro",
+                border_style="cyan",
+            )
+        )
+    else:
+        console.print(f"─── EDOPro HD Sync v{VERSION} ───")
+
+    # Ensure pics/ exists
+    os.makedirs(cfg.pics_path, exist_ok=True)
+
+    # 1. Discover databases
+    dbs = get_db_files(cfg.edopro_path)
+    if not dbs:
+        console.print(
+            "[red]No .cdb files found. Make sure you're running this from your EDOPro folder.[/red]"
+            if RICH_AVAILABLE
+            else "ERROR: No .cdb files found. Make sure you're running this from your EDOPro folder."
+        )
+        return
+
+    console.print(
+        f"[dim]Found {len(dbs)} database(s): {', '.join(os.path.basename(d) for d in dbs)}[/dim]"
+        if RICH_AVAILABLE
+        else f"Found {len(dbs)} database(s): {', '.join(os.path.basename(d) for d in dbs)}"
+    )
+
+    # 2. Scan
+    id_to_name, name_to_official = scan_databases(dbs)
+    manual_map = load_manual_map(cfg.manual_map_file)
+    console.print(
+        f"[dim]Indexed {len(id_to_name):,} cards  •  {len(name_to_official):,} HD candidates  •  {len(manual_map)} manual overrides[/dim]"
+        if RICH_AVAILABLE
+        else f"Indexed {len(id_to_name):,} cards  |  {len(name_to_official):,} HD candidates  |  {len(manual_map)} manual overrides"
+    )
+
+    # 3. Find missing
+    if cfg.force:
+        missing_ids = list(id_to_name.keys())
+    else:
+        missing_ids = [
+            cid
+            for cid in id_to_name
+            if not os.path.exists(os.path.join(cfg.pics_path, f"{cid}.jpg"))
+        ]
+
+    if not missing_ids:
+        console.print(
+            "\n[bold green]✨ All synced — nothing to download![/bold green]"
+            if RICH_AVAILABLE
+            else "\nAll synced — nothing to download!"
+        )
+        return
+
+    action = "scan" if cfg.dry_run else "download"
+    console.print(
+        f"\n[bold]{'Previewing' if cfg.dry_run else 'Downloading'} {len(missing_ids):,} missing images[/bold]  "
+        f"[dim](concurrency={cfg.concurrency}, retries={cfg.max_retries})[/dim]"
+        if RICH_AVAILABLE
+        else f"\n{'Previewing' if cfg.dry_run else 'Downloading'} {len(missing_ids):,} missing images  "
+        f"(concurrency={cfg.concurrency}, retries={cfg.max_retries})"
+    )
+
+    # 4. Download with progress
+    stats = DownloadStats()
+    semaphore = asyncio.Semaphore(cfg.concurrency)
+
+    connector = aiohttp.TCPConnector(limit=cfg.concurrency, enable_cleanup_closed=True)
+
+    async with aiohttp.ClientSession(connector=connector) as session:
+        if RICH_AVAILABLE and not cfg.quiet:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(bar_width=40),
+                MofNCompleteColumn(),
+                TimeRemainingColumn(),
+                console=console,
+            ) as progress:
+                task_id = progress.add_task("Syncing…", total=len(missing_ids))
+
+                tasks = []
+                for cid in missing_ids:
+                    name = id_to_name[cid]
+                    official = find_official_match(name, name_to_official, cfg.suffixes)
+                    manual = manual_map.get(str(cid))
+                    tasks.append(
+                        download_card(
+                            session, cid, name, official, manual,
+                            cfg, stats, semaphore, progress, task_id,
+                        )
+                    )
+                await asyncio.gather(*tasks)
+        else:
+            # Quiet mode or no rich — just run silently
+            tasks = []
+            for cid in missing_ids:
+                name = id_to_name[cid]
+                official = find_official_match(name, name_to_official, cfg.suffixes)
+                manual = manual_map.get(str(cid))
+                tasks.append(
+                    download_card(
+                        session, cid, name, official, manual,
+                        cfg, stats, semaphore,
+                    )
+                )
+            await asyncio.gather(*tasks)
+
+    # 5. Summary
+    print_summary(stats, len(missing_ids), cfg)
+
+
+def main():
+    cfg = Config()
+
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+    try:
+        asyncio.run(run(cfg))
+    except KeyboardInterrupt:
+        console.print(
+            "\n[yellow]Interrupted — partial progress is saved.[/yellow]"
+            if RICH_AVAILABLE
+            else "\nInterrupted — partial progress is saved."
+        )
+
 
 if __name__ == "__main__":
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    asyncio.run(main())
+    main()

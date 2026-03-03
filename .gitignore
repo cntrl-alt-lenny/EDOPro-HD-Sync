@@ -5,6 +5,7 @@ venv/
 
 # Mac artifacts
 .DS_Store
+New Claude Files/
 
 # EDOPro Game Files (IMPORTANT: Ignore these so they don't go to GitHub)
 pics/
