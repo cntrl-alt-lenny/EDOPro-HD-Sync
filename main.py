@@ -55,7 +55,7 @@ else:
 
     console = _FallbackConsole()
 
-VERSION = "3.3.0"
+VERSION = "3.4.0"
 
 
 # ── Database scanning ─────────────────────────────────────────────────────────
@@ -86,6 +86,9 @@ def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, int]]
     name_to_official: dict[str, int] = {}
 
     for db in db_files:
+        # Skip empty placeholder files (EDOPro ships a 0-byte cards.cdb)
+        if os.path.getsize(db) == 0:
+            continue
         try:
             conn = sqlite3.connect(db)
             cursor = conn.cursor()
@@ -237,12 +240,15 @@ async def download_card(
             return
 
     # Strategy 3 — Direct ID on official source
-    url = f"{cfg.sources['official']}/{card_id}.jpg"
-    if await _try_download(session, url, filepath, timeout, cfg.max_retries):
-        stats.ok_hd += 1
-        if progress and task_id is not None:
-            progress.advance(task_id)
-        return
+    # Skip for custom/unofficial IDs (≥ 100M) — ygoprodeck only has official Konami cards,
+    # so trying these is a guaranteed 404 that just wastes time.
+    if card_id < 100_000_000:
+        url = f"{cfg.sources['official']}/{card_id}.jpg"
+        if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+            stats.ok_hd += 1
+            if progress and task_id is not None:
+                progress.advance(task_id)
+            return
 
     # Strategy 4 — Low-res fallback (Project Ignis)
     if "backup" in cfg.sources:
