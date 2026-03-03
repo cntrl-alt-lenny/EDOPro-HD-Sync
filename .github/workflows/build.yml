@@ -17,14 +17,10 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact_name: EDOPro-HD-Sync.exe
-            asset_name: EDOPro-HD-Sync-Windows.exe
+            release_path: dist/EDOPro-HD-Sync-Windows.exe
           - os: macos-latest
-            artifact_name: EDOPro-HD-Sync
-            asset_name: EDOPro-HD-Sync-macOS
           - os: ubuntu-latest
-            artifact_name: EDOPro-HD-Sync
-            asset_name: EDOPro-HD-Sync-Linux
+            release_path: dist/EDOPro-HD-Sync-Linux.AppImage
 
     steps:
     - uses: actions/checkout@v4
@@ -45,14 +41,74 @@ jobs:
       run: |
         pyinstaller --onefile --name EDOPro-HD-Sync main.py
 
-    - name: Rename Output
+    # ── Windows: rename to .exe ───────────────────────────────────────────────
+    - name: Package (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: bash
+      run: mv dist/EDOPro-HD-Sync.exe dist/EDOPro-HD-Sync-Windows.exe
+
+    # ── macOS: rename binary; .command bootstrapper lives in the repo ─────────
+    - name: Package (macOS)
+      if: matrix.os == 'macos-latest'
       shell: bash
       run: |
-        cd dist
-        mv ${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+        mv dist/EDOPro-HD-Sync dist/EDOPro-HD-Sync-macOS
+        chmod +x dist/EDOPro-HD-Sync-macOS
 
-    - name: Release
+    # ── Linux: AppImage (single double-clickable file) ────────────────────────
+    - name: Package (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      shell: bash
+      run: |
+        wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+        chmod +x appimagetool
+
+        mkdir -p AppDir/usr/bin
+        cp dist/EDOPro-HD-Sync AppDir/usr/bin/
+        chmod +x AppDir/usr/bin/EDOPro-HD-Sync
+
+        cat > AppDir/AppRun << 'APPRUN'
+        #!/bin/bash
+        SELF=$(readlink -f "$0")
+        HERE="${SELF%/*}"
+        exec "$HERE/usr/bin/EDOPro-HD-Sync" "$@"
+        APPRUN
+        chmod +x AppDir/AppRun
+
+        cat > AppDir/EDOPro-HD-Sync.desktop << 'DESKTOP'
+        [Desktop Entry]
+        Name=EDOPro HD Sync
+        Exec=EDOPro-HD-Sync
+        Icon=EDOPro-HD-Sync
+        Type=Application
+        Categories=Utility;
+        Terminal=true
+        DESKTOP
+
+        python3 -c "
+        import struct, zlib
+        def chunk(tag, data):
+            c = tag + data
+            return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+        w = h = 256
+        raw = b''.join(b'\x00' + bytes([0, 102, 204] * w) for _ in range(h))
+        png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+        open('AppDir/EDOPro-HD-Sync.png', 'wb').write(png)
+        "
+
+        APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 ./appimagetool AppDir dist/EDOPro-HD-Sync-Linux.AppImage
+
+    # ── Release: Windows & Linux upload one file; macOS uploads binary + launcher
+    - name: Release (Windows / Linux)
       uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
+      if: startsWith(github.ref, 'refs/tags/') && matrix.os != 'macos-latest'
       with:
-        files: dist/${{ matrix.asset_name }}
+        files: ${{ matrix.release_path }}
+
+    - name: Release (macOS)
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'macos-latest'
+      with:
+        files: |
+          dist/EDOPro-HD-Sync-macOS
+          EDOPro-HD-Sync.command
