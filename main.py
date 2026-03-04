@@ -14,6 +14,8 @@ import sys
 import json
 import sqlite3
 import asyncio
+from datetime import datetime
+from time import perf_counter
 import aiohttp
 import certifi
 
@@ -32,8 +34,6 @@ try:
         TimeRemainingColumn,
         SpinnerColumn,
     )
-    from rich.table import Table
-    from rich.panel import Panel
 
     RICH_AVAILABLE = True
 except ImportError:
@@ -57,7 +57,19 @@ else:
 
     console = _FallbackConsole()
 
-VERSION = "3.7.3"
+VERSION = "3.8.0"
+
+
+def format_duration(seconds: float) -> str:
+    """Render elapsed time in a compact human-friendly format."""
+    if seconds < 60:
+        return f"{seconds:.2f}s"
+    total_seconds = int(round(seconds))
+    minutes, secs = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes}m {secs:02d}s"
+    return f"{minutes}m {secs:02d}s"
 
 
 # ── Database scanning ─────────────────────────────────────────────────────────
@@ -283,26 +295,26 @@ async def download_card(
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
-def print_summary(stats: DownloadStats, total_missing: int, cfg: Config):
-    """Print a colour-coded results table and write a log of failed cards."""
+def print_summary(stats: DownloadStats, total_missing: int, cfg: Config, runtime_seconds: float):
+    """Print summary lines and optionally write report/log files."""
+    summary_rows: list[tuple[str, int, str | None]] = []
+    if cfg.dry_run:
+        summary_rows.append(("Would download", total_missing - stats.skipped, None))
+        summary_rows.append(("Already on disk", stats.skipped, "dim"))
+    else:
+        summary_rows.append(("HD artwork", stats.ok_hd, "green"))
+        summary_rows.append(("Manual-mapped", stats.ok_mapped, "green"))
+        summary_rows.append(("Low-res fallback", stats.ok_fallback, "yellow"))
+        summary_rows.append(("Already existed", stats.skipped, "dim"))
+        summary_rows.append(("Failed", stats.failed, "red" if stats.failed else "dim"))
+
     if RICH_AVAILABLE:
-        table = Table(title="Sync Summary", show_header=False, border_style="dim")
-        table.add_column("Metric", style="bold")
-        table.add_column("Count", justify="right")
-
-        if cfg.dry_run:
-            table.add_row("Would download", str(total_missing - stats.skipped))
-            table.add_row("Already on disk", str(stats.skipped))
-        else:
-            table.add_row("✅ HD artwork", str(stats.ok_hd), style="green")
-            table.add_row("✅ Manual-mapped", str(stats.ok_mapped), style="green")
-            table.add_row("⚠️  Low-res fallback", str(stats.ok_fallback), style="yellow")
-            table.add_row("⏭️  Already existed", str(stats.skipped), style="dim")
-            table.add_row("❌ Failed", str(stats.failed), style="red" if stats.failed else "dim")
-
-        console.print()
-        console.print(table)
-
+        console.print("\n[bold]Sync Summary[/bold]")
+        for label, value, style in summary_rows:
+            if style:
+                console.print(f"  {label}: [{style}]{value}[/{style}]")
+            else:
+                console.print(f"  {label}: {value}")
         if stats.failed_cards and not cfg.quiet:
             console.print(f"\n[red]Failed cards ({len(stats.failed_cards)}):[/red]")
             for cid, cname in stats.failed_cards[:20]:
@@ -310,14 +322,9 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config):
             if len(stats.failed_cards) > 20:
                 console.print(f"  … and {len(stats.failed_cards) - 20} more.")
     else:
-        # Plain-text fallback
-        print(f"\n{'─'*40}")
-        print(f"  HD artwork:       {stats.ok_hd}")
-        print(f"  Manual-mapped:    {stats.ok_mapped}")
-        print(f"  Low-res fallback: {stats.ok_fallback}")
-        print(f"  Already existed:  {stats.skipped}")
-        print(f"  Failed:           {stats.failed}")
-        print(f"{'─'*40}")
+        print("\nSync Summary")
+        for label, value, _ in summary_rows:
+            print(f"  {label}: {value}")
 
     # Write failed cards to a log file
     if stats.failed_cards and not cfg.dry_run:
@@ -337,162 +344,198 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config):
         except OSError:
             pass  # Not critical if the log can't be written
 
+    if cfg.save_report:
+        now = datetime.now()
+        report_path = os.path.join(
+            cfg.edopro_path,
+            f"sync-report-{now.strftime('%Y%m%d-%H%M%S')}.txt",
+        )
+        try:
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write("EDOPro HD Sync Report\n")
+                f.write("=" * 40 + "\n")
+                f.write(f"Generated: {now.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Mode: {'Dry run (preview only)' if cfg.dry_run else 'Download'}\n")
+                f.write(f"Runtime: {format_duration(runtime_seconds)}\n")
+                f.write("\nSummary\n")
+                for label, value, _ in summary_rows:
+                    f.write(f"- {label}: {value}\n")
+                if stats.failed_cards:
+                    f.write("\nFailed cards\n")
+                    for cid, cname in stats.failed_cards:
+                        f.write(f"{cid}\t{cname}\n")
+            console.print(
+                f"[dim]Summary report saved to: {report_path}[/dim]"
+                if RICH_AVAILABLE
+                else f"Summary report saved to: {report_path}"
+            )
+        except OSError as exc:
+            console.print(
+                f"[yellow]Could not write summary report: {exc}[/yellow]"
+                if RICH_AVAILABLE
+                else f"Could not write summary report: {exc}"
+            )
+
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 async def run(cfg: Config):
+    started_at = perf_counter()
     # Banner
-    if RICH_AVAILABLE:
-        console.print(
-            Panel(
-                f"[bold cyan]EDOPro HD Sync[/bold cyan]  [dim]v{VERSION}[/dim]\n"
-                "Automatic HD artwork downloader for EDOPro",
-                border_style="cyan",
-            )
-        )
-    else:
-        console.print(f"─── EDOPro HD Sync v{VERSION} ───")
-
-    # Ensure pics/ exists
-    os.makedirs(cfg.pics_path, exist_ok=True)
-    abs_pics = os.path.abspath(cfg.pics_path)
-    console.print(
-        f"[dim]Saving images to:[/dim] [bold]{abs_pics}[/bold]"
-        if RICH_AVAILABLE
-        else f"Saving images to: {abs_pics}"
-    )
-
-    # 1. Discover databases
-    dbs = get_db_files(cfg.edopro_path)
-    if not dbs:
-        console.print(
-            "[red]No .cdb files found. Make sure you're running this from your EDOPro folder.[/red]"
-            if RICH_AVAILABLE
-            else "ERROR: No .cdb files found. Make sure you're running this from your EDOPro folder."
-        )
-        return
-
-    console.print(
-        f"[dim]Found {len(dbs)} database(s): {', '.join(os.path.basename(d) for d in dbs)}[/dim]"
-        if RICH_AVAILABLE
-        else f"Found {len(dbs)} database(s): {', '.join(os.path.basename(d) for d in dbs)}"
-    )
-
-    # 2. Scan
-    id_to_name, name_to_official = scan_databases(dbs)
-    manual_map = load_manual_map(cfg.manual_map_file)
-    console.print(
-        f"[dim]Indexed {len(id_to_name):,} cards  •  {len(name_to_official):,} HD candidates  •  {len(manual_map)} manual overrides[/dim]"
-        if RICH_AVAILABLE
-        else f"Indexed {len(id_to_name):,} cards  |  {len(name_to_official):,} HD candidates  |  {len(manual_map)} manual overrides"
-    )
-
-    # 3. Find missing
-    if cfg.force:
-        missing_ids = list(id_to_name.keys())
-    else:
-        missing_ids = [
-            cid
-            for cid in id_to_name
-            if not os.path.exists(os.path.join(cfg.pics_path, f"{cid}.jpg"))
-        ]
-
-    if not missing_ids:
-        console.print(
-            "\n[bold green]✨ All synced — nothing to download![/bold green]"
-            if RICH_AVAILABLE
-            else "\nAll synced — nothing to download!"
-        )
-        return
-
-    action = "scan" if cfg.dry_run else "download"
-    console.print(
-        f"\n[bold]{'Previewing' if cfg.dry_run else 'Downloading'} {len(missing_ids):,} missing images[/bold]  "
-        f"[dim](concurrency={cfg.concurrency}, retries={cfg.max_retries})[/dim]"
-        if RICH_AVAILABLE
-        else f"\n{'Previewing' if cfg.dry_run else 'Downloading'} {len(missing_ids):,} missing images  "
-        f"(concurrency={cfg.concurrency}, retries={cfg.max_retries})"
-    )
-
-    # 4. Download with progress
-    stats = DownloadStats()
-
-    # Build a queue of all card IDs to process.
-    # A fixed pool of `concurrency` workers drains it — this keeps exactly
-    # N tasks active at a time instead of creating one coroutine per card.
-    queue: asyncio.Queue[int] = asyncio.Queue()
-    for cid in missing_ids:
-        queue.put_nowait(cid)
-
-    ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-    connector = aiohttp.TCPConnector(
-        limit=cfg.concurrency,
-        enable_cleanup_closed=True,
-        ssl=ssl_ctx,
-    )
-
-    async with aiohttp.ClientSession(connector=connector) as session:
-        # Quick connectivity check before the main loop
-        try:
-            test_timeout = aiohttp.ClientTimeout(total=8)
-            async with session.get(
-                f"{cfg.sources['official']}/46986414.jpg",
-                timeout=test_timeout,
-            ) as resp:
-                if resp.status == 200:
-                    console.print(
-                        "[dim green]✓ Connected to image server[/dim green]"
-                        if RICH_AVAILABLE
-                        else "✓ Connected to image server"
-                    )
-                else:
-                    console.print(
-                        f"[yellow]⚠ Image server returned HTTP {resp.status} — downloads may fail[/yellow]"
-                        if RICH_AVAILABLE
-                        else f"⚠ Image server returned HTTP {resp.status}"
-                    )
-        except Exception as exc:
-            console.print(
-                f"[bold red]✗ Cannot reach image server: {exc}\n"
-                "  Check your internet connection — downloads will fail.[/bold red]"
-                if RICH_AVAILABLE
-                else f"✗ Cannot reach image server: {exc}"
-            )
-
-        def make_worker(progress=None, task_id=None):
-            async def worker():
-                while True:
-                    try:
-                        cid = queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        return
-                    name = id_to_name[cid]
-                    official = find_official_match(name, name_to_official, cfg.suffixes)
-                    manual = manual_map.get(str(cid))
-                    await download_card(
-                        session, cid, name, official, manual,
-                        cfg, stats, progress, task_id,
-                    )
-            return worker
-
-        if RICH_AVAILABLE and not cfg.quiet:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]{task.description}"),
-                BarColumn(bar_width=40),
-                MofNCompleteColumn(),
-                TimeRemainingColumn(),
-                console=console,
-            ) as progress:
-                task_id = progress.add_task("Syncing…", total=len(missing_ids))
-                workers = [make_worker(progress, task_id)() for _ in range(cfg.concurrency)]
-                await asyncio.gather(*workers)
+    try:
+        if RICH_AVAILABLE:
+            console.print(f"[bold cyan]EDOPro HD Sync[/bold cyan] [dim]v{VERSION}[/dim]")
+            console.print("[dim]Automatic HD artwork downloader for EDOPro[/dim]")
         else:
-            workers = [make_worker()() for _ in range(cfg.concurrency)]
-            await asyncio.gather(*workers)
+            console.print(f"EDOPro HD Sync v{VERSION}")
+            console.print("Automatic HD artwork downloader for EDOPro")
 
-    # 5. Summary
-    print_summary(stats, len(missing_ids), cfg)
+        # Ensure pics/ exists
+        os.makedirs(cfg.pics_path, exist_ok=True)
+        abs_pics = os.path.abspath(cfg.pics_path)
+        console.print(
+            f"[dim]Saving images to:[/dim] [bold]{abs_pics}[/bold]"
+            if RICH_AVAILABLE
+            else f"Saving images to: {abs_pics}"
+        )
+
+        # 1. Discover databases
+        dbs = get_db_files(cfg.edopro_path)
+        if not dbs:
+            console.print(
+                "[red]No .cdb files found. Make sure you're running this from your EDOPro folder.[/red]"
+                if RICH_AVAILABLE
+                else "ERROR: No .cdb files found. Make sure you're running this from your EDOPro folder."
+            )
+            return
+
+        console.print(
+            f"[dim]Found {len(dbs)} database(s): {', '.join(os.path.basename(d) for d in dbs)}[/dim]"
+            if RICH_AVAILABLE
+            else f"Found {len(dbs)} database(s): {', '.join(os.path.basename(d) for d in dbs)}"
+        )
+
+        # 2. Scan
+        id_to_name, name_to_official = scan_databases(dbs)
+        manual_map = load_manual_map(cfg.manual_map_file)
+        console.print(
+            f"[dim]Indexed {len(id_to_name):,} cards  •  {len(name_to_official):,} HD candidates  •  {len(manual_map)} manual overrides[/dim]"
+            if RICH_AVAILABLE
+            else f"Indexed {len(id_to_name):,} cards  |  {len(name_to_official):,} HD candidates  |  {len(manual_map)} manual overrides"
+        )
+
+        # 3. Find missing
+        if cfg.force:
+            missing_ids = list(id_to_name.keys())
+        else:
+            missing_ids = [
+                cid
+                for cid in id_to_name
+                if not os.path.exists(os.path.join(cfg.pics_path, f"{cid}.jpg"))
+            ]
+
+        if not missing_ids:
+            console.print(
+                "\n[bold green]✨ All synced — nothing to download![/bold green]"
+                if RICH_AVAILABLE
+                else "\nAll synced — nothing to download!"
+            )
+            return
+
+        console.print(
+            f"\n[bold]{'Previewing' if cfg.dry_run else 'Downloading'} {len(missing_ids):,} missing images[/bold]  "
+            f"[dim](concurrency={cfg.concurrency}, retries={cfg.max_retries})[/dim]"
+            if RICH_AVAILABLE
+            else f"\n{'Previewing' if cfg.dry_run else 'Downloading'} {len(missing_ids):,} missing images  "
+            f"(concurrency={cfg.concurrency}, retries={cfg.max_retries})"
+        )
+
+        # 4. Download with progress
+        stats = DownloadStats()
+
+        # Build a queue of all card IDs to process.
+        # A fixed pool of `concurrency` workers drains it — this keeps exactly
+        # N tasks active at a time instead of creating one coroutine per card.
+        queue: asyncio.Queue[int] = asyncio.Queue()
+        for cid in missing_ids:
+            queue.put_nowait(cid)
+
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        connector = aiohttp.TCPConnector(
+            limit=cfg.concurrency,
+            enable_cleanup_closed=True,
+            ssl=ssl_ctx,
+        )
+
+        async with aiohttp.ClientSession(connector=connector) as session:
+            # Quick connectivity check before the main loop
+            try:
+                test_timeout = aiohttp.ClientTimeout(total=8)
+                async with session.get(
+                    f"{cfg.sources['official']}/46986414.jpg",
+                    timeout=test_timeout,
+                ) as resp:
+                    if resp.status == 200:
+                        console.print(
+                            "[dim green]✓ Connected to image server[/dim green]"
+                            if RICH_AVAILABLE
+                            else "✓ Connected to image server"
+                        )
+                    else:
+                        console.print(
+                            f"[yellow]⚠ Image server returned HTTP {resp.status} — downloads may fail[/yellow]"
+                            if RICH_AVAILABLE
+                            else f"⚠ Image server returned HTTP {resp.status}"
+                        )
+            except Exception as exc:
+                console.print(
+                    f"[bold red]✗ Cannot reach image server: {exc}\n"
+                    "  Check your internet connection — downloads will fail.[/bold red]"
+                    if RICH_AVAILABLE
+                    else f"✗ Cannot reach image server: {exc}"
+                )
+
+            def make_worker(progress=None, task_id=None):
+                async def worker():
+                    while True:
+                        try:
+                            cid = queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            return
+                        name = id_to_name[cid]
+                        official = find_official_match(name, name_to_official, cfg.suffixes)
+                        manual = manual_map.get(str(cid))
+                        await download_card(
+                            session, cid, name, official, manual,
+                            cfg, stats, progress, task_id,
+                        )
+                return worker
+
+            if RICH_AVAILABLE and not cfg.quiet:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[bold blue]{task.description}"),
+                    BarColumn(bar_width=40),
+                    MofNCompleteColumn(),
+                    TimeRemainingColumn(),
+                    console=console,
+                ) as progress:
+                    task_id = progress.add_task("Syncing…", total=len(missing_ids))
+                    workers = [make_worker(progress, task_id)() for _ in range(cfg.concurrency)]
+                    await asyncio.gather(*workers)
+            else:
+                workers = [make_worker()() for _ in range(cfg.concurrency)]
+                await asyncio.gather(*workers)
+
+        # 5. Summary
+        print_summary(stats, len(missing_ids), cfg, perf_counter() - started_at)
+    finally:
+        elapsed = perf_counter() - started_at
+        console.print(
+            f"\n[bold]Total runtime:[/bold] {format_duration(elapsed)}"
+            if RICH_AVAILABLE
+            else f"\nTotal runtime: {format_duration(elapsed)}"
+        )
 
 
 def main():

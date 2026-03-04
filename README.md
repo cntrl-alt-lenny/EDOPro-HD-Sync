@@ -45,6 +45,7 @@ Options:
   --config PATH      Use a custom config file (default: config.json)
   --generate-config  Create a default config.json and exit
   --quiet            Minimal output — progress bar and summary only
+  --save-report      Write a timestamped .txt sync report in the EDOPro folder
 ```
 
 ## Configuration
