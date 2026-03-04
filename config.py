@@ -16,8 +16,8 @@ import os
 DEFAULTS = {
     "edopro_path": ".",
     "concurrency": 50,
-    "max_retries": 2,
-    "timeout": 10,
+    "max_retries": 3,
+    "timeout": 30,
     "sources": {
         "official": "https://images.ygoprodeck.com/images/cards",
         "backup": "https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics",
@@ -31,6 +31,28 @@ DEFAULTS = {
 }
 
 CONFIG_FILENAME = "config.json"
+
+
+def _pick_value(cli_val, file_val, default):
+    if cli_val is not None:
+        return cli_val
+    if file_val is not None:
+        return file_val
+    return default
+
+
+def _ensure_int(name: str, value, default: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        print(f"⚠️  {name} must be an integer; using {default}.")
+        return default
+    return value
+
+
+def _clamp_min_int(name: str, value: int, minimum: int) -> int:
+    if value < minimum:
+        print(f"⚠️  {name} must be >= {minimum}; using {minimum}.")
+        return minimum
+    return value
 
 
 # ── Config file ───────────────────────────────────────────────────────────────
@@ -81,13 +103,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--max-retries",
         type=int,
         default=None,
-        help="Retry failed downloads N times (default: 2).",
+        help="Retry failed downloads N times (default: 3).",
     )
     p.add_argument(
         "--timeout",
         type=int,
         default=None,
-        help="HTTP timeout in seconds (default: 10).",
+        help="HTTP timeout in seconds (default: 30).",
     )
     p.add_argument(
         "--config",
@@ -129,23 +151,31 @@ class Config:
         self.pics_path: str = os.path.join(self.edopro_path, "pics")
         self.manual_map_file: str = os.path.join(self.edopro_path, "manual_map.json")
 
-        self.concurrency: int = (
-            self.cli.concurrency
-            or file_cfg.get("concurrency")
-            or DEFAULTS["concurrency"]
+        self.concurrency: int = _pick_value(
+            self.cli.concurrency, file_cfg.get("concurrency"), DEFAULTS["concurrency"]
         )
-        self.max_retries: int = (
-            self.cli.max_retries
-            or file_cfg.get("max_retries")
-            or DEFAULTS["max_retries"]
+        self.max_retries: int = _pick_value(
+            self.cli.max_retries, file_cfg.get("max_retries"), DEFAULTS["max_retries"]
         )
-        self.timeout: int = (
-            self.cli.timeout
-            or file_cfg.get("timeout")
-            or DEFAULTS["timeout"]
+        self.timeout: int = _pick_value(
+            self.cli.timeout, file_cfg.get("timeout"), DEFAULTS["timeout"]
         )
 
-        self.sources: dict = file_cfg.get("sources", DEFAULTS["sources"])
+        self.concurrency = _ensure_int("concurrency", self.concurrency, DEFAULTS["concurrency"])
+        self.max_retries = _ensure_int("max_retries", self.max_retries, DEFAULTS["max_retries"])
+        self.timeout = _ensure_int("timeout", self.timeout, DEFAULTS["timeout"])
+
+        self.concurrency = _clamp_min_int("concurrency", self.concurrency, 1)
+        self.max_retries = _clamp_min_int("max_retries", self.max_retries, 1)
+        self.timeout = _clamp_min_int("timeout", self.timeout, 1)
+
+        sources = dict(DEFAULTS["sources"])
+        file_sources = file_cfg.get("sources")
+        if isinstance(file_sources, dict):
+            sources.update(file_sources)
+        elif file_sources is not None:
+            print("⚠️  sources must be an object; using defaults.")
+        self.sources: dict = sources
         self.suffixes: list = file_cfg.get(
             "suffixes_to_strip", DEFAULTS["suffixes_to_strip"]
         )

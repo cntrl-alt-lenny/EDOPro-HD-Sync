@@ -9,9 +9,20 @@ ZIP_URL="https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest/downl
 
 if [ ! -f "$BINARY" ]; then
     echo "Binary not found — downloading EDOPro HD Sync..."
-    curl -L --progress-bar "$ZIP_URL" -o _tmp.zip
-    unzip -j _tmp.zip "$BINARY" -d .
+    if ! curl -L --progress-bar "$ZIP_URL" -o _tmp.zip; then
+        echo "Download failed. Check your internet connection and try again."
+        exit 1
+    fi
+    if ! unzip -j _tmp.zip "$BINARY" -d .; then
+        echo "Unzip failed. The download may be corrupted."
+        rm -f _tmp.zip
+        exit 1
+    fi
     rm _tmp.zip
+    if [ ! -f "$BINARY" ]; then
+        echo "Could not find the app after unzip. Please re-download the zip."
+        exit 1
+    fi
     chmod +x "$BINARY"
     echo ""
 fi

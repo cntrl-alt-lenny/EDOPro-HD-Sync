@@ -57,7 +57,7 @@ else:
 
     console = _FallbackConsole()
 
-VERSION = "3.7.0"
+VERSION = "3.7.1"
 
 
 # ── Database scanning ─────────────────────────────────────────────────────────
@@ -92,19 +92,22 @@ def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, int]]
         if os.path.getsize(db) == 0:
             continue
         try:
-            conn = sqlite3.connect(db)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT d.id, t.name "
-                "FROM datas d INNER JOIN texts t ON d.id = t.id"
-            )
-            for card_id, name in cursor.fetchall():
-                id_to_name[card_id] = name
-                if card_id < 100_000_000 and name not in name_to_official:
-                    name_to_official[name] = card_id
-            conn.close()
+            with sqlite3.connect(db) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT d.id, t.name "
+                    "FROM datas d INNER JOIN texts t ON d.id = t.id"
+                )
+                for card_id, name in cursor.fetchall():
+                    id_to_name[card_id] = name
+                    if card_id < 100_000_000 and name not in name_to_official:
+                        name_to_official[name] = card_id
         except sqlite3.Error as exc:
-            console.print(f"[yellow]⚠️  Error reading {db}: {exc}[/yellow]" if RICH_AVAILABLE else f"⚠️  Error reading {db}: {exc}")
+            console.print(
+                f"[yellow]⚠️  Error reading {db}: {exc}[/yellow]"
+                if RICH_AVAILABLE
+                else f"⚠️  Error reading {db}: {exc}"
+            )
 
     return id_to_name, name_to_official
 
@@ -176,10 +179,12 @@ async def _try_download(
                     content = await resp.read()
                     # Sanity check: a valid JPEG is > 1 KB typically
                     if len(content) < 512:
-                        return False
-                    with open(filepath, "wb") as f:
-                        f.write(content)
-                    return True
+                        if attempt >= max_retries:
+                            return False
+                    else:
+                        with open(filepath, "wb") as f:
+                            f.write(content)
+                        return True
                 elif resp.status == 404:
                     return False  # No point retrying a 404
                 # 5xx or transient — fall through to retry
