@@ -5,6 +5,8 @@ A tool that automatically downloads HD card artwork for the EDOPro Yu-Gi-Oh! sim
 
 The owner is a non-programmer. Keep explanations plain and avoid jargon. Prefer simple, focused changes over clever abstractions.
 
+**After committing and pushing any change, always offer to push a version tag so a new release is built automatically.** The owner will not know to do this themselves. Suggest the next patch/minor version based on what changed.
+
 ## Running / developing locally
 ```bash
 pip install -r requirements.txt
