@@ -309,22 +309,29 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config, runtime
         summary_rows.append(("Failed", stats.failed, "red" if stats.failed else "dim"))
 
     if RICH_AVAILABLE:
-        console.print("\n[bold]Sync Summary[/bold]")
+        console.print()
+        console.rule("[bold]Sync Summary[/bold]")
         for label, value, style in summary_rows:
+            formatted = f"{value:>7,}"
             if style:
-                console.print(f"  {label}: [{style}]{value}[/{style}]")
+                console.print(f"  {label:<18} [{style}]{formatted}[/{style}]")
             else:
-                console.print(f"  {label}: {value}")
+                console.print(f"  {label:<18} {formatted}")
         if stats.failed_cards and not cfg.quiet:
             console.print(f"\n[red]Failed cards ({len(stats.failed_cards)}):[/red]")
             for cid, cname in stats.failed_cards[:20]:
                 console.print(f"  [dim]{cid}[/dim] — {cname}")
             if len(stats.failed_cards) > 20:
                 console.print(f"  … and {len(stats.failed_cards) - 20} more.")
+        console.rule()
     else:
-        print("\nSync Summary")
+        sep = "─" * 38
+        print(f"\n{sep}")
+        print("  Sync Summary")
+        print(sep)
         for label, value, _ in summary_rows:
-            print(f"  {label}: {value}")
+            print(f"  {label:<18} {value:>7,}")
+        print(sep)
 
     # Write failed cards to a log file
     if stats.failed_cards and not cfg.dry_run:
@@ -532,9 +539,9 @@ async def run(cfg: Config):
     finally:
         elapsed = perf_counter() - started_at
         console.print(
-            f"\n[bold]Total runtime:[/bold] {format_duration(elapsed)}"
+            f"[bold]Total runtime:[/bold] {format_duration(elapsed)}"
             if RICH_AVAILABLE
-            else f"\nTotal runtime: {format_duration(elapsed)}"
+            else f"Total runtime: {format_duration(elapsed)}"
         )
 
 
