@@ -57,7 +57,7 @@ else:
 
     console = _FallbackConsole()
 
-VERSION = "3.7.1"
+VERSION = "3.7.3"
 
 
 # ── Database scanning ─────────────────────────────────────────────────────────
