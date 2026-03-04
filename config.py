@@ -127,6 +127,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Minimal output — only show the progress bar and summary.",
     )
+    p.add_argument(
+        "--save-report",
+        action="store_true",
+        help="Write a timestamped .txt sync report in the EDOPro folder.",
+    )
     return p
 
 
@@ -183,3 +188,4 @@ class Config:
         self.force: bool = self.cli.force
         self.dry_run: bool = self.cli.dry_run
         self.quiet: bool = self.cli.quiet
+        self.save_report: bool = self.cli.save_report

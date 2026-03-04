@@ -33,26 +33,26 @@ xattr -d com.apple.quarantine "$BINARY" 2>/dev/null
 
 # ── Menu ──────────────────────────────────────────────────────────────────────
 echo ""
-echo "  ╔══════════════════════════════════════╗"
-echo "  ║        EDOPro HD Sync Launcher       ║"
-echo "  ╠══════════════════════════════════════╣"
-echo "  ║  1) Sync missing cards  (default)    ║"
-echo "  ║  2) Force re-download all cards      ║"
-echo "  ║  3) Preview only — no downloading    ║"
-echo "  ║  4) Generate a config file           ║"
-echo "  ╚══════════════════════════════════════╝"
+echo "EDOPro HD Sync Launcher"
+echo "1) Sync missing cards only"
+echo "2) Refresh all card images (overwrite existing) [default]"
 echo ""
-read -rp "  Choose [1-4] or press Enter for default: " choice
+read -rp "Choose [1-2] or press Enter for default: " choice
 echo ""
 
+FLAGS=()
 case "$choice" in
-    2) FLAGS="--force" ;;
-    3) FLAGS="--dry-run" ;;
-    4) FLAGS="--generate-config" ;;
-    *) FLAGS="" ;;
+    1) ;;
+    *) FLAGS+=(--force) ;;
 esac
 
-./"$BINARY" $FLAGS
+read -rp "Save a timestamped sync report (.txt)? [y/N]: " save_report
+echo ""
+case "$save_report" in
+    [Yy]|[Yy][Ee][Ss]) FLAGS+=(--save-report) ;;
+esac
+
+./"$BINARY" "${FLAGS[@]}"
 
 echo ""
 read -rp "Press Enter to close this window..."
