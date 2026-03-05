@@ -89,6 +89,67 @@ def get_db_files(edopro_path: str) -> list[str]:
     return dbs
 
 
+def normalize_edopro_path(path: str) -> str:
+    """Trim quotes and expand user input into an absolute folder path."""
+    cleaned = path.strip().strip('"')
+    return os.path.abspath(os.path.expanduser(cleaned))
+
+
+
+def prompt_for_edopro_path(cfg: Config) -> list[str] | None:
+    """Prompt until the user enters a valid EDOPro folder or cancels."""
+    checked_path = os.path.abspath(cfg.edopro_path)
+    console.print(
+        f"[yellow]No .cdb files found in:[/yellow] [bold]{checked_path}[/bold]"
+        if RICH_AVAILABLE
+        else f"No .cdb files found in: {checked_path}"
+    )
+    console.print("Enter your EDOPro folder path. Leave it blank to quit.")
+
+    while True:
+        try:
+            entered = input("EDOPro folder path: ").strip()
+        except EOFError:
+            entered = ""
+
+        if not entered:
+            console.print(
+                "[yellow]No folder entered. Exiting.[/yellow]"
+                if RICH_AVAILABLE
+                else "No folder entered. Exiting."
+            )
+            return None
+
+        candidate = normalize_edopro_path(entered)
+        dbs = get_db_files(candidate)
+        if dbs:
+            saved = cfg.set_edopro_path(candidate, save=True)
+            console.print(
+                f"[green]Using EDOPro folder:[/green] [bold]{cfg.edopro_path}[/bold]"
+                if RICH_AVAILABLE
+                else f"Using EDOPro folder: {cfg.edopro_path}"
+            )
+            if saved:
+                console.print(
+                    f"[dim]Saved to {os.path.abspath(cfg.config_path)}[/dim]"
+                    if RICH_AVAILABLE
+                    else f"Saved to {os.path.abspath(cfg.config_path)}"
+                )
+            else:
+                console.print(
+                    f"[yellow]Could not save {os.path.abspath(cfg.config_path)}; you may need to enter it again next time.[/yellow]"
+                    if RICH_AVAILABLE
+                    else f"Could not save {os.path.abspath(cfg.config_path)}; you may need to enter it again next time."
+                )
+            return dbs
+
+        console.print(
+            "[yellow]That folder does not look like EDOPro. It needs cards.cdb or expansions/*.cdb.[/yellow]"
+            if RICH_AVAILABLE
+            else "That folder does not look like EDOPro. It needs cards.cdb or expansions/*.cdb."
+        )
+
+
 def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, int]]:
     """
     Read every .cdb and return two mappings:
@@ -397,7 +458,14 @@ async def run(cfg: Config):
             console.print(f"EDOPro HD Sync v{VERSION}")
             console.print("Automatic HD artwork downloader for EDOPro")
 
-        # Ensure pics/ exists
+        # 1. Discover databases
+        dbs = get_db_files(cfg.edopro_path)
+        if not dbs:
+            dbs = prompt_for_edopro_path(cfg)
+            if not dbs:
+                return
+
+        # Ensure pics/ exists after the final EDOPro folder is known
         os.makedirs(cfg.pics_path, exist_ok=True)
         abs_pics = os.path.abspath(cfg.pics_path)
         console.print(
@@ -405,16 +473,6 @@ async def run(cfg: Config):
             if RICH_AVAILABLE
             else f"Saving images to: {abs_pics}"
         )
-
-        # 1. Discover databases
-        dbs = get_db_files(cfg.edopro_path)
-        if not dbs:
-            console.print(
-                "[red]No .cdb files found. Make sure you're running this from your EDOPro folder.[/red]"
-                if RICH_AVAILABLE
-                else "ERROR: No .cdb files found. Make sure you're running this from your EDOPro folder."
-            )
-            return
 
         console.print(
             f"[dim]Found {len(dbs)} database(s): {', '.join(os.path.basename(d) for d in dbs)}[/dim]"

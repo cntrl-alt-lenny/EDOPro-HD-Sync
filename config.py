@@ -11,8 +11,6 @@ import argparse
 import json
 import os
 
-# ── Defaults ──────────────────────────────────────────────────────────────────
-
 DEFAULTS = {
     "edopro_path": ".",
     "concurrency": 50,
@@ -43,19 +41,17 @@ def _pick_value(cli_val, file_val, default):
 
 def _ensure_int(name: str, value, default: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
-        print(f"⚠️  {name} must be an integer; using {default}.")
+        print(f"Warning: {name} must be an integer; using {default}.")
         return default
     return value
 
 
 def _clamp_min_int(name: str, value: int, minimum: int) -> int:
     if value < minimum:
-        print(f"⚠️  {name} must be >= {minimum}; using {minimum}.")
+        print(f"Warning: {name} must be >= {minimum}; using {minimum}.")
         return minimum
     return value
 
-
-# ── Config file ───────────────────────────────────────────────────────────────
 
 def _load_config_file(path: str) -> dict:
     """Read config.json if it exists; return empty dict otherwise."""
@@ -63,20 +59,39 @@ def _load_config_file(path: str) -> dict:
         return {}
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+        if not isinstance(data, dict):
+            print(f"Warning: {path} must contain a JSON object at the top level; using defaults.")
+            return {}
+        return data
     except (json.JSONDecodeError, OSError) as exc:
-        print(f"⚠️  Could not read {path}: {exc}  — using defaults.")
+        print(f"Warning: Could not read {path}: {exc}; using defaults.")
         return {}
+
+
+def _write_config_file(path: str, config_data: dict) -> None:
+    """Write config data with a stable, user-editable layout."""
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(config_data, f, indent=2)
 
 
 def generate_default_config(path: str) -> None:
     """Write a fresh config.json with all defaults so users can edit it."""
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(DEFAULTS, f, indent=2)
-    print(f"📄 Generated default config at {path}")
+    _write_config_file(path, DEFAULTS)
+    print(f"Generated default config at {path}")
 
 
-# ── CLI arguments ─────────────────────────────────────────────────────────────
+def save_edopro_path(path: str, edopro_path: str) -> bool:
+    """Update only the remembered EDOPro path in the config file."""
+    config_data = _load_config_file(path)
+    config_data["edopro_path"] = edopro_path
+    try:
+        _write_config_file(path, config_data)
+    except OSError as exc:
+        print(f"Warning: Could not write {path}: {exc}")
+        return False
+    return True
+
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -125,7 +140,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--quiet",
         action="store_true",
-        help="Minimal output — only show the progress bar and summary.",
+        help="Minimal output - only show the progress bar and summary.",
     )
     p.add_argument(
         "--save-report",
@@ -135,26 +150,24 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
-
 class Config:
-    """Immutable bag of settings built from defaults → file → CLI."""
+    """Immutable bag of settings built from defaults to file to CLI."""
 
-    def __init__(self):
+    def __init__(self, argv: list[str] | None = None):
         parser = _build_parser()
-        self.cli = parser.parse_args()
+        self.cli = parser.parse_args(argv)
+        self.config_path: str = self.cli.config
 
-        # If user just wants a config file generated, do that and bail
         if self.cli.generate_config:
-            generate_default_config(self.cli.config)
+            generate_default_config(self.config_path)
             raise SystemExit(0)
 
-        file_cfg = _load_config_file(self.cli.config)
+        file_cfg = _load_config_file(self.config_path)
 
-        # Merge: defaults ← file ← CLI
-        self.edopro_path: str = file_cfg.get("edopro_path", DEFAULTS["edopro_path"])
-        self.pics_path: str = os.path.join(self.edopro_path, "pics")
-        self.manual_map_file: str = os.path.join(self.edopro_path, "manual_map.json")
+        self.edopro_path: str = ""
+        self.pics_path: str = ""
+        self.manual_map_file: str = ""
+        self.set_edopro_path(file_cfg.get("edopro_path", DEFAULTS["edopro_path"]))
 
         self.concurrency: int = _pick_value(
             self.cli.concurrency, file_cfg.get("concurrency"), DEFAULTS["concurrency"]
@@ -179,7 +192,7 @@ class Config:
         if isinstance(file_sources, dict):
             sources.update(file_sources)
         elif file_sources is not None:
-            print("⚠️  sources must be an object; using defaults.")
+            print("Warning: sources must be an object; using defaults.")
         self.sources: dict = sources
         self.suffixes: list = file_cfg.get(
             "suffixes_to_strip", DEFAULTS["suffixes_to_strip"]
@@ -189,3 +202,13 @@ class Config:
         self.dry_run: bool = self.cli.dry_run
         self.quiet: bool = self.cli.quiet
         self.save_report: bool = self.cli.save_report
+
+    def set_edopro_path(self, edopro_path: str, save: bool = False) -> bool:
+        """Update path-derived fields and optionally persist the new folder."""
+        normalized_path = os.path.abspath(os.path.expanduser(edopro_path))
+        self.edopro_path = normalized_path
+        self.pics_path = os.path.join(self.edopro_path, "pics")
+        self.manual_map_file = os.path.join(self.edopro_path, "manual_map.json")
+        if save:
+            return save_edopro_path(self.config_path, self.edopro_path)
+        return True
