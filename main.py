@@ -53,9 +53,21 @@ except ImportError:
     RICH_AVAILABLE = False
 
 
-if RICH_AVAILABLE:
+def _stdout_supports_unicode() -> bool:
+    """Return True when stdout can encode Rich output safely."""
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        "\u2500".encode(encoding)
+    except (LookupError, UnicodeEncodeError):
+        return False
+    return True
+
+
+if RICH_AVAILABLE and _stdout_supports_unicode():
     console = Console()
 else:
+    RICH_AVAILABLE = False
+
     class _FallbackConsole:
         """Bare-minimum stand-in when rich is not installed."""
 
@@ -72,7 +84,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "3.10.2"
+VERSION = "3.10.3"
 
 
 def format_duration(seconds: float) -> str:
