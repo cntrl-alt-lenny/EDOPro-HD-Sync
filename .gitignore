@@ -6,6 +6,10 @@ __pycache__/
 *.py[cod]
 venv/
 .venv/
+build/
+dist/
+AppDir/
+*.spec
 
 # Mac artifacts
 .DS_Store

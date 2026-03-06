@@ -14,7 +14,7 @@ jobs:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false   # keep building other platforms if one fails
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -36,20 +36,22 @@ jobs:
       shell: bash
       run: |
         pip install -r requirements.txt
-        pip install pyinstaller
+        pip install pyinstaller pillow
+
+    - name: Generate release icon
+      shell: bash
+      run: python tools/build_icon.py
 
     - name: Build with PyInstaller
       shell: bash
       run: |
-        pyinstaller --onefile --name EDOPro-HD-Sync --collect-data certifi main.py
+        pyinstaller --onefile --name EDOPro-HD-Sync --icon build/app-icon.ico --collect-data certifi main.py
 
-    # ── Windows: rename to .exe ───────────────────────────────────────────────
     - name: Package (Windows)
       if: matrix.os == 'windows-latest'
       shell: bash
       run: mv dist/EDOPro-HD-Sync.exe dist/EDOPro-HD-Sync-Windows.exe
 
-    # ── macOS: zip binary + launcher together (zip preserves execute bit) ─────
     - name: Package (macOS)
       if: matrix.os == 'macos-latest'
       shell: bash
@@ -57,12 +59,8 @@ jobs:
         mv dist/EDOPro-HD-Sync dist/EDOPro-HD-Sync-macOS
         chmod +x dist/EDOPro-HD-Sync-macOS
         chmod +x EDOPro-HD-Sync.command
-        # -j flattens paths so both files sit at the root of the zip
-        # zip on macOS preserves Unix permissions, so the execute bit on
-        # .command survives the download → unzip journey
         zip -j dist/EDOPro-HD-Sync-macOS.zip dist/EDOPro-HD-Sync-macOS EDOPro-HD-Sync.command
 
-    # ── Linux: AppImage (single double-clickable file) ────────────────────────
     - name: Package (Linux)
       if: matrix.os == 'ubuntu-latest'
       shell: bash
@@ -92,16 +90,7 @@ jobs:
         Terminal=true
         DESKTOP
 
-        python3 -c "
-        import struct, zlib
-        def chunk(tag, data):
-            c = tag + data
-            return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
-        w = h = 256
-        raw = b''.join(b'\x00' + bytes([0, 102, 204] * w) for _ in range(h))
-        png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
-        open('AppDir/EDOPro-HD-Sync.png', 'wb').write(png)
-        "
+        cp build/app-icon.png AppDir/EDOPro-HD-Sync.png
 
         APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 ./appimagetool AppDir dist/EDOPro-HD-Sync-Linux.AppImage
 

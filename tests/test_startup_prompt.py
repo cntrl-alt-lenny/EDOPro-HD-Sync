@@ -42,8 +42,8 @@ class StartupPromptTests(unittest.TestCase):
 
     def write_config(self, data: dict) -> str:
         config_path = os.path.join(self.test_root, "config.json")
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(data, f)
+        with open(config_path, "w", encoding="utf-8") as file_obj:
+            json.dump(data, file_obj)
         return config_path
 
     def make_edopro_dir(self, name: str, *, with_cards: bool = False, with_expansion: bool = False) -> str:
@@ -63,15 +63,32 @@ class StartupPromptTests(unittest.TestCase):
         valid_path = self.make_edopro_dir("edopro-root", with_cards=True)
         cfg = Config(["--config", config_path, "--quiet"])
 
-        with mock.patch("builtins.input", side_effect=[invalid_path, f'"{valid_path}"']):
+        with mock.patch.object(main.sys, "platform", "win32"), mock.patch.object(
+            main,
+            "browse_for_edopro_path",
+            side_effect=[(invalid_path, True), (valid_path, True)],
+        ):
             dbs = main.prompt_for_edopro_path(cfg)
 
         self.assertEqual(dbs, [os.path.join(valid_path, "cards.cdb")])
         self.assertEqual(cfg.edopro_path, os.path.abspath(valid_path))
-        with open(config_path, "r", encoding="utf-8") as f:
-            saved = json.load(f)
+        with open(config_path, "r", encoding="utf-8") as file_obj:
+            saved = json.load(file_obj)
         self.assertEqual(saved["edopro_path"], os.path.abspath(valid_path))
         self.assertEqual(saved["concurrency"], 7)
+
+    def test_prompt_falls_back_to_manual_input_when_picker_is_unavailable(self):
+        config_path = self.write_config({})
+        valid_path = self.make_edopro_dir("manual-entry", with_cards=True)
+        cfg = Config(["--config", config_path, "--quiet"])
+
+        with mock.patch.object(main.sys, "platform", "win32"), mock.patch.object(
+            main, "browse_for_edopro_path", return_value=(None, False)
+        ), mock.patch("builtins.input", return_value=valid_path):
+            dbs = main.prompt_for_edopro_path(cfg)
+
+        self.assertEqual(dbs, [os.path.join(valid_path, "cards.cdb")])
+        self.assertEqual(cfg.edopro_path, os.path.abspath(valid_path))
 
     def test_run_uses_prompted_expansions_folder(self):
         config_path = self.write_config({})
@@ -79,16 +96,19 @@ class StartupPromptTests(unittest.TestCase):
         cfg = Config(["--config", config_path, "--dry-run", "--quiet"])
         expected_dbs = [os.path.join(valid_path, "expansions", "custom.cdb")]
 
-        with mock.patch("builtins.input", return_value=valid_path), \
-            mock.patch.object(main, "scan_databases", return_value=({123: "Test Card"}, {})) as scan_mock, \
-            mock.patch.object(main, "load_manual_map", return_value={}), \
-            mock.patch.object(main.aiohttp, "ClientSession", FakeSession):
+        with mock.patch.object(main.sys, "platform", "win32"), mock.patch.object(
+            main, "browse_for_edopro_path", return_value=(valid_path, True)
+        ), mock.patch.object(
+            main, "scan_databases", return_value=({123: "Test Card"}, {})
+        ) as scan_mock, mock.patch.object(main, "load_manual_map", return_value={}), mock.patch.object(
+            main.aiohttp, "ClientSession", FakeSession
+        ):
             asyncio.run(main.run(cfg))
 
         scan_mock.assert_called_once_with(expected_dbs)
         self.assertTrue(os.path.isdir(os.path.join(valid_path, "pics")))
-        with open(config_path, "r", encoding="utf-8") as f:
-            saved = json.load(f)
+        with open(config_path, "r", encoding="utf-8") as file_obj:
+            saved = json.load(file_obj)
         self.assertEqual(saved["edopro_path"], os.path.abspath(valid_path))
 
 

@@ -1,39 +1,37 @@
 # EDOPro HD Sync
 
-A lightning-fast, automated HD artwork downloader for EDOPro.
+A fast HD artwork downloader for EDOPro.
 
-Reads your local `.cdb` databases (including expansions, Alt Arts, GOAT formats, and Anime cards) and downloads every missing HD card image automatically.
+It scans your local `.cdb` databases, finds missing card images, and downloads the best match automatically.
 
 ## Features
 
-- **Zero Configuration** — drop it in your EDOPro folder and run it.
-- **Database Sync** — scans `cards.cdb` + all expansion databases so every installed card gets artwork.
-- **Async Downloads** — fetches up to 50 images simultaneously with automatic retries.
-- **Smart Matching** — maps GOAT / Pre-Errata variants to their official HD art via suffix stripping.
-- **Manual Overrides** — use `manual_map.json` to force specific card-ID-to-image mappings.
-- **Rich Progress UI** — colour-coded progress bar, spinner, and summary table in the terminal.
-- **Fully Configurable** — tune concurrency, retries, timeouts, and image sources via `config.json` or CLI flags.
-- **Cross-Platform** — works on Windows, Linux, and macOS.
+- Windows folder picker so you can choose your EDOPro install in File Explorer instead of typing a path.
+- Clean per-user config storage, so the executable does not drop `config.json` beside itself on first run.
+- Async downloads with retries and SSL cert bundling for packaged builds.
+- Smart GOAT / Pre-Errata matching plus optional `manual_map.json` overrides.
+- Progress UI and a clearer end-of-run summary with totals, failures, speed, and runtime.
+- Cross-platform release builds for Windows, macOS, and Linux.
 
 ## Quick Start
 
-### From a Release Binary
+### Windows release binary
 
-1. Download the executable for your OS from the [Releases page](LINK_TO_YOUR_RELEASES_PAGE).
-2. Place it inside your **EDOPro root folder** (where `EDOPro.exe` / `cards.cdb` lives).
-3. Double-click to run (or run from a terminal for more options).
+1. Download `EDOPro-HD-Sync-Windows.exe` from the Releases page.
+2. Run it from anywhere.
+3. When the folder picker opens, choose your EDOPro folder.
+4. After the sync finishes, press Enter to close the window.
 
-### From Source
+### From source
 
 ```bash
-# Python 3.10+ required
 pip install -r requirements.txt
 python main.py
 ```
 
 ## CLI Options
 
-```
+```text
 python main.py [OPTIONS]
 
 Options:
@@ -42,15 +40,24 @@ Options:
   --concurrency N    Max simultaneous downloads (default: 50)
   --max-retries N    Retry failed downloads N times (default: 3)
   --timeout N        HTTP timeout in seconds (default: 30)
-  --config PATH      Use a custom config file (default: config.json)
-  --generate-config  Create a default config.json and exit
-  --quiet            Minimal output — progress bar and summary only
+  --config PATH      Use a custom config file
+  --generate-config  Create a default config file and exit
+  --quiet            Minimal output - progress bar and summary only
   --save-report      Write a timestamped .txt sync report in the EDOPro folder
+  --no-pause         On Windows packaged builds, close immediately on exit
 ```
 
 ## Configuration
 
-Run `python main.py --generate-config` to create a `config.json` you can edit:
+By default the app stores config in a per-user location instead of the executable folder:
+
+- Windows: `%APPDATA%\EDOPro-HD-Sync\config.json`
+- macOS: `~/Library/Application Support/EDOPro-HD-Sync/config.json`
+- Linux: `$XDG_CONFIG_HOME/EDOPro-HD-Sync/config.json` or `~/.config/EDOPro-HD-Sync/config.json`
+
+You can still override that with `--config PATH`.
+
+Run `python main.py --generate-config` to create an editable config file:
 
 ```json
 {
@@ -66,11 +73,9 @@ Run `python main.py --generate-config` to create a `config.json` you can edit:
 }
 ```
 
-CLI flags always override config file values.
-
 ## Manual Mapping
 
-For cards that can't be auto-matched, create a `manual_map.json` in your EDOPro folder:
+For cards that cannot be auto-matched, create `manual_map.json` in your EDOPro folder:
 
 ```json
 {
@@ -78,9 +83,13 @@ For cards that can't be auto-matched, create a `manual_map.json` in your EDOPro 
 }
 ```
 
-This tells the tool: "for card ID 511000818, download the image for card 12345678 instead."
+That tells the app to download the image for `12345678` and save it as `511000818.jpg`.
 
-## Credits & License
+## Release Icon
 
-- Original concept: [EDOPro-Hd-Downloader](https://github.com/NiiMiyo/EDOPro-Hd-Downloader) by NiiMiyo.
-- Licensed under the [MIT License](LICENSE).
+Windows executables need an `.ico` file, not a raw PNG. The build now accepts a PNG source at `assets/app-icon.png`, converts it to `build/app-icon.ico`, and uses that for the Windows release.
+
+## Credits and License
+
+- Original concept: [EDOPro-Hd-Downloader](https://github.com/NiiMiyo/EDOPro-Hd-Downloader) by NiiMiyo
+- Licensed under the [MIT License](LICENSE)
