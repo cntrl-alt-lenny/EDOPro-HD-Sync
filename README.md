@@ -87,7 +87,16 @@ That tells the app to download the image for `12345678` and save it as `51100081
 
 ## Release Icon
 
-Windows executables need an `.ico` file, not a raw PNG. The build now accepts a PNG source at `assets/app-icon.png`, converts it to `build/app-icon.ico`, and uses that for the Windows release.
+Windows executables need an `.ico` file, not a raw PNG. The build accepts a PNG source at `assets/app-icon.png`, converts it to `build/app-icon.ico`, and uses that for the Windows release.
+
+## Windows Signing
+
+Windows Smart App Control can block unfamiliar unsigned apps. To ship a signed Windows release from GitHub Actions, configure these repository settings:
+
+- Secrets: `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`
+- Variables: `TRUSTED_SIGNING_ACCOUNT_NAME`, `TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME`, `TRUSTED_SIGNING_ENDPOINT`
+
+The workflow will sign `EDOPro-HD-Sync-Windows.exe` with Microsoft Trusted Signing when those values are present. If they are missing, the workflow still builds the executable but warns that Smart App Control may block it.
 
 ## Credits and License
 
