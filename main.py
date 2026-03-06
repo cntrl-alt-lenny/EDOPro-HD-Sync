@@ -13,6 +13,7 @@ import json
 import os
 import sqlite3
 import ssl
+import subprocess
 import sys
 from datetime import datetime
 from time import perf_counter
@@ -71,7 +72,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "3.10.1"
+VERSION = "3.10.2"
 
 
 def format_duration(seconds: float) -> str:
@@ -116,8 +117,62 @@ def normalize_edopro_path(path: str) -> str:
     return os.path.abspath(os.path.expanduser(cleaned))
 
 
+def browse_for_edopro_path_with_powershell(initial_dir: str) -> tuple[str | None, bool]:
+    """Open a Windows folder picker via PowerShell when Tk is unavailable."""
+    if sys.platform != "win32":
+        return None, False
+
+    start_dir = initial_dir if os.path.isdir(initial_dir) else os.path.expanduser("~")
+    script = """
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = 'Select your EDOPro folder'
+$dialog.UseDescriptionForTitle = $true
+$dialog.SelectedPath = $env:EDOPRO_INITIAL_DIR
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    Write-Output $dialog.SelectedPath
+}
+""".strip()
+
+    try:
+        result = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoLogo",
+                "-NoProfile",
+                "-STA",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env={**os.environ, "EDOPRO_INITIAL_DIR": start_dir},
+            timeout=120,
+            check=False,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return None, False
+
+    if result.returncode != 0:
+        return None, False
+
+    selected = result.stdout.strip()
+    if not selected:
+        return None, True
+    return normalize_edopro_path(selected), True
+
+
 def browse_for_edopro_path(initial_dir: str) -> tuple[str | None, bool]:
     """Open a Windows folder picker. Returns (path, used_dialog)."""
+    selected, used_dialog = browse_for_edopro_path_with_powershell(initial_dir)
+    if used_dialog:
+        return selected, True
+
     if sys.platform != "win32" or tk is None or filedialog is None:
         return None, False
 
