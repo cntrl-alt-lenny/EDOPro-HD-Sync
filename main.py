@@ -84,7 +84,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "3.10.3"
+VERSION = "3.10.4"
 
 
 def format_duration(seconds: float) -> str:
@@ -109,7 +109,7 @@ def format_rate(count: int, seconds: float) -> str:
 # Database scanning
 
 def get_db_files(edopro_path: str) -> list[str]:
-    """Find every .cdb file in the EDOPro root and expansions/ folder."""
+    """Find card DBs in the EDOPro root, expansions/, and repository delta folders."""
     dbs: list[str] = []
     root_db = os.path.join(edopro_path, "cards.cdb")
     if os.path.exists(root_db):
@@ -120,6 +120,14 @@ def get_db_files(edopro_path: str) -> list[str]:
         for filename in sorted(os.listdir(exp_path)):
             if filename.endswith(".cdb"):
                 dbs.append(os.path.join(exp_path, filename))
+
+    repo_path = os.path.join(edopro_path, "repositories")
+    if os.path.isdir(repo_path):
+        for current_root, dirnames, filenames in os.walk(repo_path):
+            dirnames.sort()
+            for filename in sorted(filenames):
+                if filename.endswith(".delta.cdb"):
+                    dbs.append(os.path.join(current_root, filename))
     return dbs
 
 
@@ -295,9 +303,9 @@ def prompt_for_edopro_path(cfg: Config) -> list[str] | None:
             return dbs
 
         console.print(
-            "[yellow]That folder does not look like EDOPro. It needs cards.cdb or expansions/*.cdb.[/yellow]"
+            "[yellow]That folder does not look like EDOPro. It needs cards.cdb, expansions/*.cdb, or repositories/**/*.delta.cdb.[/yellow]"
             if RICH_AVAILABLE
-            else "That folder does not look like EDOPro. It needs cards.cdb or expansions/*.cdb."
+            else "That folder does not look like EDOPro. It needs cards.cdb, expansions/*.cdb, or repositories/**/*.delta.cdb."
         )
 
 

@@ -2,7 +2,7 @@
 
 A fast HD artwork downloader for EDOPro.
 
-It scans your local `.cdb` databases, finds missing card images, and downloads the best match automatically.
+It scans your local `.cdb` databases, including repository delta files used by formats like GOAT, finds missing card images, and downloads the best match automatically.
 
 ## Features
 
