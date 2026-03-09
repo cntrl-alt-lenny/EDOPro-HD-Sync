@@ -84,7 +84,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "3.10.4"
+VERSION = "3.10.5"
 
 
 def format_duration(seconds: float) -> str:

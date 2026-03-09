@@ -7,8 +7,7 @@ It scans your local `.cdb` databases, including repository delta files used by f
 ## Features
 
 - Windows folder picker so you can choose your EDOPro install in File Explorer instead of typing a path.
-- Clean per-user config storage, so the app does not drop `config.json` beside itself on first run.
-- Portable Windows release bundle that runs through Python's signed embedded runtime instead of a custom unsigned `.exe`.
+- Clean per-user config storage, so the executable does not drop `config.json` beside itself on first run.
 - Async downloads with retries and SSL cert bundling for packaged builds.
 - Smart GOAT / Pre-Errata matching plus optional `manual_map.json` overrides.
 - Progress UI and a clearer end-of-run summary with totals, failures, speed, and runtime.
@@ -16,13 +15,12 @@ It scans your local `.cdb` databases, including repository delta files used by f
 
 ## Quick Start
 
-### Windows release bundle
+### Windows release binary
 
-1. Download `EDOPro-HD-Sync-Windows.zip` from the Releases page.
-2. Extract the zip anywhere.
-3. Double-click `EDOPro-HD-Sync.cmd`.
-4. When the folder picker opens, choose your EDOPro folder.
-5. After the sync finishes, press any key to close the window.
+1. Download `EDOPro-HD-Sync-Windows.exe` from the Releases page.
+2. Run it from anywhere.
+3. When the folder picker opens, choose your EDOPro folder.
+4. After the sync finishes, press Enter to close the window.
 
 ### From source
 
@@ -89,7 +87,16 @@ That tells the app to download the image for `12345678` and save it as `51100081
 
 ## Release Icon
 
-Windows executables need an `.ico` file, not a raw PNG. The build accepts a PNG source at `assets/app-icon.png`, converts it to `build/app-icon.ico`, and uses that for the macOS/Linux packaged artifacts. The Windows release is currently a portable `.zip` bundle instead of a custom `.exe`, specifically to avoid Smart App Control blocking an unsigned binary.
+Windows executables need an `.ico` file, not a raw PNG. The build accepts a PNG source at `assets/app-icon.png`, converts it to `build/app-icon.ico`, and uses that for the Windows release.
+
+## Windows Signing
+
+Windows Smart App Control can block unfamiliar unsigned apps. To ship a signed Windows release from GitHub Actions, configure these repository settings:
+
+- Secrets: `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`
+- Variables: `TRUSTED_SIGNING_ACCOUNT_NAME`, `TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME`, `TRUSTED_SIGNING_ENDPOINT`
+
+The workflow will sign `EDOPro-HD-Sync-Windows.exe` with Microsoft Trusted Signing when those values are present. If they are missing, the workflow still builds the executable but warns that Smart App Control may block it.
 
 ## Credits and License
 
