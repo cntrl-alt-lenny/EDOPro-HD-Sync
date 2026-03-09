@@ -10,6 +10,7 @@ Improvements over the original:
 
 import asyncio
 import json
+import ntpath
 import os
 import sqlite3
 import ssl
@@ -84,7 +85,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "3.10.5"
+VERSION = "3.11.0"
 
 
 def format_duration(seconds: float) -> str:
@@ -134,6 +135,12 @@ def get_db_files(edopro_path: str) -> list[str]:
 def normalize_edopro_path(path: str) -> str:
     """Trim quotes and expand user input into an absolute folder path."""
     cleaned = path.strip().strip('"')
+    if sys.platform == "win32" and (
+        cleaned.startswith("\\\\")
+        or (len(cleaned) >= 2 and cleaned[1] == ":")
+        or "\\" in cleaned
+    ):
+        return ntpath.abspath(ntpath.expanduser(cleaned))
     return os.path.abspath(os.path.expanduser(cleaned))
 
 

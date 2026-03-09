@@ -18,49 +18,58 @@ class ConfigPathTests(unittest.TestCase):
         os.chdir(self.test_root)
         self.addCleanup(os.chdir, self.original_cwd)
 
-    def test_default_config_uses_appdata_when_no_local_config_exists(self):
-        appdata_root = os.path.join(self.test_root, "AppData", "Roaming")
+    def test_default_config_uses_script_directory_when_running_from_source(self):
+        script_dir = os.path.join(self.test_root, "source-build")
+        os.makedirs(script_dir, exist_ok=True)
+        fake_config_py = os.path.join(script_dir, "config.py")
 
-        with mock.patch.object(config_module.sys, "platform", "win32"), mock.patch.dict(
-            os.environ,
-            {"APPDATA": appdata_root, "LOCALAPPDATA": appdata_root},
-            clear=False,
+        with mock.patch.object(config_module, "__file__", fake_config_py):
+            cfg = Config([])
+
+        expected = os.path.join(script_dir, config_module.CONFIG_FILENAME)
+        self.assertEqual(cfg.config_path, expected)
+
+    def test_default_config_uses_executable_directory_when_frozen(self):
+        frozen_dir = os.path.join(self.test_root, "frozen-build")
+        os.makedirs(frozen_dir, exist_ok=True)
+        fake_executable = os.path.join(frozen_dir, "EDOPro-HD-Sync.exe")
+
+        with mock.patch.object(config_module.sys, "executable", fake_executable), mock.patch.object(
+            config_module.sys, "frozen", True, create=True
         ):
             cfg = Config([])
 
-        expected = os.path.join(appdata_root, config_module.APP_NAME, config_module.CONFIG_FILENAME)
+        expected = os.path.join(frozen_dir, config_module.CONFIG_FILENAME)
         self.assertEqual(cfg.config_path, expected)
 
-    def test_existing_local_config_is_still_used_for_legacy_installs(self):
-        local_config = os.path.join(self.test_root, config_module.CONFIG_FILENAME)
+    def test_default_config_loads_existing_file_from_script_directory(self):
+        script_dir = os.path.join(self.test_root, "source-build")
+        os.makedirs(script_dir, exist_ok=True)
+        local_config = os.path.join(script_dir, config_module.CONFIG_FILENAME)
         with open(local_config, "w", encoding="utf-8") as file_obj:
             json.dump({"concurrency": 7}, file_obj)
 
-        appdata_root = os.path.join(self.test_root, "AppData", "Roaming")
-        with mock.patch.object(config_module.sys, "platform", "win32"), mock.patch.dict(
-            os.environ,
-            {"APPDATA": appdata_root, "LOCALAPPDATA": appdata_root},
-            clear=False,
-        ):
+        with mock.patch.object(config_module, "__file__", os.path.join(script_dir, "config.py")):
             cfg = Config([])
 
         self.assertEqual(cfg.config_path, local_config)
         self.assertEqual(cfg.concurrency, 7)
 
-    def test_saving_edopro_path_creates_default_config_directory(self):
-        appdata_root = os.path.join(self.test_root, "AppData", "Roaming")
+    def test_saving_edopro_path_creates_config_beside_executable(self):
+        frozen_dir = os.path.join(self.test_root, "frozen-build")
+        os.makedirs(frozen_dir, exist_ok=True)
+        fake_executable = os.path.join(frozen_dir, "EDOPro-HD-Sync.exe")
         edopro_path = os.path.join(self.test_root, "ProjectIgnis")
         os.makedirs(edopro_path, exist_ok=True)
 
-        with mock.patch.object(config_module.sys, "platform", "win32"), mock.patch.dict(
-            os.environ,
-            {"APPDATA": appdata_root, "LOCALAPPDATA": appdata_root},
-            clear=False,
+        with mock.patch.object(config_module.sys, "executable", fake_executable), mock.patch.object(
+            config_module.sys, "frozen", True, create=True
         ):
             cfg = Config([])
             saved = cfg.set_edopro_path(edopro_path, save=True)
 
         self.assertTrue(saved)
+        self.assertEqual(cfg.config_path, os.path.join(frozen_dir, config_module.CONFIG_FILENAME))
         self.assertTrue(os.path.exists(cfg.config_path))
         with open(cfg.config_path, "r", encoding="utf-8") as file_obj:
             saved_config = json.load(file_obj)

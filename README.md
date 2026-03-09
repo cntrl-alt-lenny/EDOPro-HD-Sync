@@ -7,7 +7,7 @@ It scans your local `.cdb` databases, including repository delta files used by f
 ## Features
 
 - Windows folder picker so you can choose your EDOPro install in File Explorer instead of typing a path.
-- Clean per-user config storage, so the executable does not drop `config.json` beside itself on first run.
+- `config.json` is stored beside the executable, or beside `main.py` when running from source.
 - Async downloads with retries and SSL cert bundling for packaged builds.
 - Smart GOAT / Pre-Errata matching plus optional `manual_map.json` overrides.
 - Progress UI and a clearer end-of-run summary with totals, failures, speed, and runtime.
@@ -15,12 +15,13 @@ It scans your local `.cdb` databases, including repository delta files used by f
 
 ## Quick Start
 
-### Windows release binary
+### Windows release zip
 
-1. Download `EDOPro-HD-Sync-Windows.exe` from the Releases page.
-2. Run it from anywhere.
-3. When the folder picker opens, choose your EDOPro folder.
-4. After the sync finishes, press Enter to close the window.
+1. Download `EDOPro-HD-Sync-Windows-VERSION.zip` from the Releases page.
+2. Extract `EDOPro-HD-Sync-Windows-VERSION/`.
+3. Run `EDOPro-HD-Sync.exe` from that folder.
+4. When the folder picker opens, choose your EDOPro folder.
+5. After the sync finishes, press Enter to close the window.
 
 ### From source
 
@@ -49,11 +50,10 @@ Options:
 
 ## Configuration
 
-By default the app stores config in a per-user location instead of the executable folder:
+By default the app stores `config.json` beside the program you run:
 
-- Windows: `%APPDATA%\EDOPro-HD-Sync\config.json`
-- macOS: `~/Library/Application Support/EDOPro-HD-Sync/config.json`
-- Linux: `$XDG_CONFIG_HOME/EDOPro-HD-Sync/config.json` or `~/.config/EDOPro-HD-Sync/config.json`
+- Packaged builds: next to `EDOPro-HD-Sync.exe`
+- From source: next to `main.py`
 
 You can still override that with `--config PATH`.
 
@@ -96,7 +96,7 @@ Windows Smart App Control can block unfamiliar unsigned apps. To ship a signed W
 - Secrets: `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`
 - Variables: `TRUSTED_SIGNING_ACCOUNT_NAME`, `TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME`, `TRUSTED_SIGNING_ENDPOINT`
 
-The workflow will sign `EDOPro-HD-Sync-Windows.exe` with Microsoft Trusted Signing when those values are present. If they are missing, the workflow still builds the executable but warns that Smart App Control may block it.
+The workflow will sign `EDOPro-HD-Sync.exe` with Microsoft Trusted Signing before packaging it into `EDOPro-HD-Sync-Windows-VERSION.zip`. If they are missing, the workflow still builds the release zip but warns that Smart App Control may block the executable.
 
 ## Credits and License
 

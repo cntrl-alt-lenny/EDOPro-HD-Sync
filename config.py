@@ -12,8 +12,6 @@ import json
 import os
 import sys
 
-APP_NAME = "EDOPro-HD-Sync"
-
 DEFAULTS = {
     "edopro_path": ".",
     "concurrency": 50,
@@ -32,44 +30,6 @@ DEFAULTS = {
 }
 
 CONFIG_FILENAME = "config.json"
-
-
-def _program_dir() -> str:
-    """Return the folder that holds the script or bundled executable."""
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(os.path.abspath(sys.executable))
-    return os.path.dirname(os.path.abspath(__file__))
-
-
-def _legacy_config_candidates() -> list[str]:
-    """Check old config locations first so existing installs keep working."""
-    candidates: list[str] = []
-    for base_dir in (_program_dir(), os.getcwd()):
-        candidate = os.path.join(base_dir, CONFIG_FILENAME)
-        if candidate not in candidates:
-            candidates.append(candidate)
-    return candidates
-
-
-def get_default_config_path() -> str:
-    """Store config in a per-user app-data folder unless a legacy file exists."""
-    for candidate in _legacy_config_candidates():
-        if os.path.exists(candidate):
-            return candidate
-
-    if sys.platform == "win32":
-        config_root = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
-    elif sys.platform == "darwin":
-        config_root = os.path.join(os.path.expanduser("~"), "Library", "Application Support")
-    else:
-        config_root = os.environ.get("XDG_CONFIG_HOME") or os.path.join(
-            os.path.expanduser("~"), ".config"
-        )
-
-    if not config_root:
-        config_root = os.path.expanduser("~")
-
-    return os.path.join(config_root, APP_NAME, CONFIG_FILENAME)
 
 
 def _pick_value(cli_val, file_val, default):
@@ -174,7 +134,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--config",
         type=str,
         default=None,
-        help="Use a custom config file (default: per-user app-data config).",
+        help="Use a custom config file (default: config.json beside the executable/script).",
     )
     p.add_argument(
         "--generate-config",
@@ -205,10 +165,14 @@ class Config:
     def __init__(self, argv: list[str] | None = None):
         parser = _build_parser()
         self.cli = parser.parse_args(argv)
+        default_config_base = sys.executable if getattr(sys, "frozen", False) else __file__
         self.config_path: str = (
             os.path.abspath(os.path.expanduser(self.cli.config))
             if self.cli.config
-            else get_default_config_path()
+            else os.path.join(
+                os.path.dirname(os.path.abspath(default_config_base)),
+                CONFIG_FILENAME,
+            )
         )
 
         if self.cli.generate_config:

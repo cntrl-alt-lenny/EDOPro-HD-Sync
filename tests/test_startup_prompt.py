@@ -96,8 +96,14 @@ class StartupPromptTests(unittest.TestCase):
         cfg = Config(["--config", config_path, "--dry-run", "--quiet"])
         expected_dbs = [os.path.join(valid_path, "expansions", "custom.cdb")]
 
-        with mock.patch.object(main.sys, "platform", "win32"), mock.patch.object(
-            main, "browse_for_edopro_path", return_value=(valid_path, True)
+        def prompt_stub(prompt_cfg):
+            prompt_cfg.set_edopro_path(valid_path, save=True)
+            return expected_dbs
+
+        with mock.patch.object(
+            main, "get_db_files", return_value=[]
+        ), mock.patch.object(
+            main, "prompt_for_edopro_path", side_effect=prompt_stub
         ), mock.patch.object(
             main, "scan_databases", return_value=({123: "Test Card"}, {})
         ) as scan_mock, mock.patch.object(main, "load_manual_map", return_value={}), mock.patch.object(
