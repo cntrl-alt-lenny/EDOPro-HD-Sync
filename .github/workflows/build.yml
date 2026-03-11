@@ -136,7 +136,10 @@ jobs:
         mv dist/EDOPro-HD-Sync dist/EDOPro-HD-Sync-macOS
         chmod +x dist/EDOPro-HD-Sync-macOS
         chmod +x EDOPro-HD-Sync.command
-        zip -j dist/EDOPro-HD-Sync-macOS.zip dist/EDOPro-HD-Sync-macOS EDOPro-HD-Sync.command
+        mkdir -p "dist/EDOPro HD Sync MacOS"
+        mv dist/EDOPro-HD-Sync-macOS "dist/EDOPro HD Sync MacOS/"
+        cp EDOPro-HD-Sync.command "dist/EDOPro HD Sync MacOS/"
+        cd dist && zip -r EDOPro-HD-Sync-macOS.zip "EDOPro HD Sync MacOS"
 
     - name: Package (Linux)
       if: matrix.os == 'ubuntu-latest'
