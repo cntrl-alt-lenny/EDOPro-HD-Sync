@@ -2,23 +2,26 @@
 # EDOPro HD Sync — macOS Launcher
 # Unzip EDOPro-HD-Sync-macOS.zip into your EDOPro folder, then double-click this file.
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BINARY="$SCRIPT_DIR/EDOPro-HD-Sync-macOS"
 
-BINARY="EDOPro-HD-Sync-macOS"
+# Run from the EDOPro root (one level up from this script's folder),
+# so the tool finds cards.cdb, expansions/, etc.
+cd "$SCRIPT_DIR/.."
 ZIP_URL="https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest/download/EDOPro-HD-Sync-macOS.zip"
 
 if [ ! -f "$BINARY" ]; then
     echo "Binary not found — downloading EDOPro HD Sync..."
-    if ! curl -L --progress-bar "$ZIP_URL" -o _tmp.zip; then
+    if ! curl -L --progress-bar "$ZIP_URL" -o "$SCRIPT_DIR/_tmp.zip"; then
         echo "Download failed. Check your internet connection and try again."
         exit 1
     fi
-    if ! unzip -j _tmp.zip "$BINARY" -d .; then
+    if ! unzip -j "$SCRIPT_DIR/_tmp.zip" "EDOPro HD Sync MacOS/EDOPro-HD-Sync-macOS" -d "$SCRIPT_DIR"; then
         echo "Unzip failed. The download may be corrupted."
-        rm -f _tmp.zip
+        rm -f "$SCRIPT_DIR/_tmp.zip"
         exit 1
     fi
-    rm _tmp.zip
+    rm "$SCRIPT_DIR/_tmp.zip"
     if [ ! -f "$BINARY" ]; then
         echo "Could not find the app after unzip. Please re-download the zip."
         exit 1
@@ -52,7 +55,7 @@ case "$save_report" in
     [Yy]|[Yy][Ee][Ss]) FLAGS+=(--save-report) ;;
 esac
 
-./"$BINARY" "${FLAGS[@]}"
+"$BINARY" "${FLAGS[@]}"
 
 echo ""
 read -rp "Press Enter to close this window..."
