@@ -18,8 +18,8 @@ It scans your local `.cdb` databases, including repository delta files used by f
 ### Windows release zip
 
 1. Download `EDOPro-HD-Sync-Windows-VERSION.zip` from the Releases page.
-2. Extract `EDOPro-HD-Sync-Windows-VERSION/`.
-3. Run `EDOPro-HD-Sync.exe` from that folder.
+2. Extract the zip anywhere.
+3. Run `EDOPro-HD-Sync.exe`.
 4. When the folder picker opens, choose your EDOPro folder.
 5. After the sync finishes, press Enter to close the window.
 
@@ -96,7 +96,7 @@ Windows Smart App Control can block unfamiliar unsigned apps. To ship a signed W
 - Secrets: `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`
 - Variables: `TRUSTED_SIGNING_ACCOUNT_NAME`, `TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME`, `TRUSTED_SIGNING_ENDPOINT`
 
-The workflow will sign `EDOPro-HD-Sync.exe` with Microsoft Trusted Signing before packaging it into `EDOPro-HD-Sync-Windows-VERSION.zip`. If they are missing, the workflow still builds the release zip but warns that Smart App Control may block the executable.
+The workflow will sign `EDOPro-HD-Sync.exe` with Microsoft Trusted Signing before packaging it into `EDOPro-HD-Sync-Windows-VERSION.zip`. If they are missing, the workflow still builds the executable and ZIP but warns that Smart App Control may block it.
 
 ## Credits and License
 

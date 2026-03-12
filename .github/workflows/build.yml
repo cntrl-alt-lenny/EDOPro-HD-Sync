@@ -120,15 +120,11 @@ jobs:
       shell: pwsh
       run: |
         $version = "${{ steps.release_version.outputs.value }}"
-        $folder = "EDOPro-HD-Sync-Windows-$version"
-        $archive = "dist/$folder.zip"
-        New-Item -ItemType Directory -Force -Path "dist/$folder" | Out-Null
-        Move-Item "dist/EDOPro-HD-Sync.exe" "dist/$folder/EDOPro-HD-Sync.exe"
+        $archive = "dist/EDOPro-HD-Sync-Windows-$version.zip"
         if (Test-Path $archive) {
           Remove-Item $archive -Force
         }
-        Compress-Archive -Path "dist/$folder" -DestinationPath $archive
-
+        Compress-Archive -Path "dist/EDOPro-HD-Sync.exe" -DestinationPath $archive -Force
     - name: Package (macOS)
       if: matrix.os == 'macos-latest'
       shell: bash

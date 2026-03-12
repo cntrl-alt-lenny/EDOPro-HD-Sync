@@ -63,7 +63,7 @@ git tag v3.x.x && git push origin v3.x.x
 ```
 
 The CI matrix builds:
-- `EDOPro-HD-Sync-Windows.exe` (windows-latest)
+- `EDOPro-HD-Sync-Windows-VERSION.zip` (windows-latest, contains `EDOPro-HD-Sync.exe` at the ZIP root)
 - `EDOPro-HD-Sync-macOS.zip` — contains the binary + `EDOPro-HD-Sync.command` (macos-latest)
 - `EDOPro-HD-Sync-Linux.AppImage` (ubuntu-latest)
 
