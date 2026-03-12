@@ -117,6 +117,38 @@ class StartupPromptTests(unittest.TestCase):
             saved = json.load(file_obj)
         self.assertEqual(saved["edopro_path"], os.path.abspath(valid_path))
 
+    def test_startup_menu_applies_user_choices(self):
+        config_path = self.write_config({})
+        cfg = Config(["--config", config_path])
+
+        with mock.patch("builtins.input", side_effect=["2", "y", "y"]):
+            main.prompt_startup_menu(cfg)
+
+        self.assertTrue(cfg.force)
+        self.assertTrue(cfg.save_report)
+        self.assertTrue(cfg.save_failures)
+
+    def test_run_skips_startup_menu_when_cli_flags_are_passed(self):
+        config_path = self.write_config({})
+        valid_path = self.make_edopro_dir("skip-menu")
+        cfg = Config(["--config", config_path, "--force"])
+        cfg.set_edopro_path(valid_path)
+
+        with mock.patch.object(main.sys, "platform", "win32"), mock.patch.object(
+            main.sys, "frozen", True, create=True
+        ), mock.patch.object(
+            main, "prompt_startup_menu"
+        ) as menu_mock, mock.patch.object(
+            main, "get_db_files", return_value=[os.path.join(valid_path, "cards.cdb")]
+        ), mock.patch.object(
+            main, "scan_databases", return_value=({}, {})
+        ), mock.patch.object(
+            main, "load_manual_map", return_value={}
+        ):
+            asyncio.run(main.run(cfg))
+
+        menu_mock.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

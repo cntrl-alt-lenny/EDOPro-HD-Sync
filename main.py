@@ -85,7 +85,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "3.13.0"
+VERSION = "3.13.1"
 
 
 def format_duration(seconds: float) -> str:
@@ -665,6 +665,59 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config, runtime
 
 # Main
 
+def _prompt_yes_no(question: str, default: bool = False) -> bool:
+    """Prompt for a yes/no answer, returning the default on blank input."""
+    suffix = "[Y/n]" if default else "[y/N]"
+    try:
+        answer = input(f"{question} {suffix}: ").strip().lower()
+    except EOFError:
+        return default
+    if not answer:
+        return default
+    if answer in {"y", "yes"}:
+        return True
+    if answer in {"n", "no"}:
+        return False
+    return default
+
+
+def should_show_startup_menu(cfg: Config) -> bool:
+    """Show the startup menu only for interactive packaged Windows runs."""
+    return (
+        sys.platform == "win32"
+        and getattr(sys, "frozen", False)
+        and not cfg.quiet
+        and not cfg.has_explicit_cli_option(
+            "--force",
+            "--dry-run",
+            "--save-report",
+            "--save-failures",
+        )
+    )
+
+
+def prompt_startup_menu(cfg: Config) -> None:
+    """Collect one-time runtime options before the sync starts."""
+    console.print()
+    console.print("1) Sync missing cards only [default]")
+    console.print("2) Refresh all card images (overwrite existing)")
+    console.print()
+    try:
+        choice = input("Choose [1-2] or press Enter for default: ").strip()
+    except EOFError:
+        choice = ""
+    console.print()
+
+    cfg.force = choice == "2"
+    cfg.save_report = _prompt_yes_no("Save a timestamped sync report?", default=cfg.save_report)
+    console.print()
+    cfg.save_failures = _prompt_yes_no(
+        "Save a timestamped failed-card list?",
+        default=cfg.save_failures,
+    )
+    console.print()
+
+
 async def run(cfg: Config):
     started_at = perf_counter()
     try:
@@ -674,6 +727,9 @@ async def run(cfg: Config):
         else:
             console.print(f"EDOPro HD Sync v{VERSION}")
             console.print("Automatic HD artwork downloader for EDOPro")
+
+        if should_show_startup_menu(cfg):
+            prompt_startup_menu(cfg)
 
         dbs = get_db_files(cfg.edopro_path)
         if not dbs:
