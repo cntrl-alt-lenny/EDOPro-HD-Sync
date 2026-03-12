@@ -85,7 +85,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "3.11.0"
+VERSION = "3.13.0"
 
 
 def format_duration(seconds: float) -> str:
@@ -357,6 +357,7 @@ def find_official_match(
     name: str,
     name_to_official: dict[str, int],
     suffixes: list[str],
+    quiet: bool = False,
 ) -> int | None:
     """Try to resolve a card name to its official Konami ID."""
     if name in name_to_official:
@@ -366,6 +367,12 @@ def find_official_match(
             clean = name[: -len(suffix)]
             if clean in name_to_official:
                 return name_to_official[clean]
+            if not quiet and "Pre-Errata" in suffix:
+                console.print(
+                    f'[dim]Pre-Errata lookup miss: "{clean}" (from "{name}")[/dim]'
+                    if RICH_AVAILABLE
+                    else f'Pre-Errata lookup miss: "{clean}" (from "{name}")'
+                )
     return None
 
 
@@ -389,6 +396,7 @@ class DownloadStats:
         self.ok_hd = 0
         self.ok_mapped = 0
         self.ok_fallback = 0
+        self.official_ok = 0
         self.skipped = 0
         self.failed = 0
         self.failed_cards: list[tuple[int, str]] = []
@@ -396,6 +404,23 @@ class DownloadStats:
     @property
     def total_ok(self) -> int:
         return self.ok_hd + self.ok_mapped + self.ok_fallback
+
+    @property
+    def unofficial_failures(self) -> int:
+        return sum(1 for card_id, _ in self.failed_cards if card_id >= 100_000_000)
+
+    @property
+    def other_failures(self) -> int:
+        return self.failed - self.unofficial_failures
+
+    def record_success(self, card_id: int, counter_name: str) -> None:
+        setattr(self, counter_name, getattr(self, counter_name) + 1)
+        if card_id < 100_000_000:
+            self.official_ok += 1
+
+    def record_failure(self, card_id: int, name: str) -> None:
+        self.failed += 1
+        self.failed_cards.append((card_id, name))
 
 
 async def _try_download(
@@ -475,7 +500,7 @@ async def download_card(
     if manual_match:
         url = f"{cfg.sources['official']}/{manual_match}.jpg"
         if await _try_download(session, url, filepath, timeout, cfg.max_retries):
-            stats.ok_mapped += 1
+            stats.record_success(card_id, "ok_mapped")
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
@@ -483,7 +508,7 @@ async def download_card(
     if official_match and official_match != card_id:
         url = f"{cfg.sources['official']}/{official_match}.jpg"
         if await _try_download(session, url, filepath, timeout, cfg.max_retries):
-            stats.ok_hd += 1
+            stats.record_success(card_id, "ok_hd")
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
@@ -491,7 +516,7 @@ async def download_card(
     if card_id < 100_000_000:
         url = f"{cfg.sources['official']}/{card_id}.jpg"
         if await _try_download(session, url, filepath, timeout, cfg.max_retries):
-            stats.ok_hd += 1
+            stats.record_success(card_id, "ok_hd")
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
@@ -499,13 +524,12 @@ async def download_card(
     if "backup" in cfg.sources:
         url = f"{cfg.sources['backup']}/{card_id}.jpg"
         if await _try_download(session, url, filepath, timeout, cfg.max_retries):
-            stats.ok_fallback += 1
+            stats.record_success(card_id, "ok_fallback")
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
 
-    stats.failed += 1
-    stats.failed_cards.append((card_id, name))
+    stats.record_failure(card_id, name)
     if progress and task_id is not None:
         progress.advance(task_id)
 
@@ -514,10 +538,10 @@ async def download_card(
 
 def print_summary(stats: DownloadStats, total_missing: int, cfg: Config, runtime_seconds: float):
     """Print summary lines and optionally write report/log files."""
-    attempted_downloads = stats.total_ok + stats.failed
+    attempted_downloads = stats.official_ok + stats.other_failures
     success_rate = "n/a"
     if attempted_downloads:
-        success_rate = f"{(stats.total_ok / attempted_downloads) * 100:.1f}%"
+        success_rate = f"{(stats.official_ok / attempted_downloads) * 100:.1f}%"
 
     summary_rows: list[tuple[str, str, str | None]] = [("Missing images", f"{total_missing:,}", None)]
     if cfg.dry_run:
@@ -525,13 +549,28 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config, runtime
         summary_rows.append(("Already on disk", f"{stats.skipped:,}", "dim"))
     else:
         summary_rows.append(("Downloaded", f"{stats.total_ok:,}", "green"))
-        summary_rows.append(("Unavailable", f"{stats.failed:,}", "red" if stats.failed else "dim"))
+        summary_rows.append(
+            (
+                "Unavailable (unofficial)",
+                f"{stats.unofficial_failures:,}",
+                "red" if stats.unofficial_failures else "dim",
+            )
+        )
+        summary_rows.append(
+            (
+                "Unavailable (other)",
+                f"{stats.other_failures:,}",
+                "red" if stats.other_failures else "dim",
+            )
+        )
         summary_rows.append(("Already existed", f"{stats.skipped:,}", "dim"))
-        summary_rows.append(("Success rate", success_rate, "green" if stats.total_ok else "dim"))
+        summary_rows.append(("Success rate", success_rate, "green" if attempted_downloads else "dim"))
         summary_rows.append(("Avg speed", format_rate(stats.total_ok, runtime_seconds), "dim"))
         summary_rows.append(("HD artwork", f"{stats.ok_hd:,}", "green"))
         summary_rows.append(("Manual mapped", f"{stats.ok_mapped:,}", "green"))
         summary_rows.append(("Low-res fallback", f"{stats.ok_fallback:,}", "yellow"))
+
+    label_width = max(len("Images folder"), *(len(label) for label, _, _ in summary_rows))
 
     if RICH_AVAILABLE:
         console.print()
@@ -539,10 +578,12 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config, runtime
         for label, value, style in summary_rows:
             formatted = f"{value:>12}"
             if style:
-                console.print(f"  {label:<18} [{style}]{formatted}[/{style}]")
+                console.print(f"  {label:<{label_width}} [{style}]{formatted}[/{style}]")
             else:
-                console.print(f"  {label:<18} {formatted}")
-        console.print(f"  {'Images folder':<18} [bold]{os.path.abspath(cfg.pics_path)}[/bold]")
+                console.print(f"  {label:<{label_width}} {formatted}")
+        console.print(
+            f"  {'Images folder':<{label_width}} [bold]{os.path.abspath(cfg.pics_path)}[/bold]"
+        )
         if stats.failed_cards and not cfg.quiet:
             console.print(f"\n[red]Failed cards ({len(stats.failed_cards)}):[/red]")
             for card_id, card_name in stats.failed_cards[:20]:
@@ -556,17 +597,25 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config, runtime
         print("  Sync Summary")
         print(sep)
         for label, value, _ in summary_rows:
-            print(f"  {label:<18} {value:>12}")
-        print(f"  {'Images folder':<18} {os.path.abspath(cfg.pics_path)}")
+            print(f"  {label:<{label_width}} {value:>12}")
+        print(f"  {'Images folder':<{label_width}} {os.path.abspath(cfg.pics_path)}")
         print(sep)
 
-    if stats.failed_cards and not cfg.dry_run:
-        log_path = os.path.join(cfg.edopro_path, "sync-failed.txt")
+    now = None
+    timestamp = None
+    if cfg.save_report or (cfg.save_failures and stats.failed_cards and not cfg.dry_run):
+        now = datetime.now()
+        timestamp = now.strftime("%Y%m%d-%H%M%S")
+
+    if cfg.save_failures and stats.failed_cards and not cfg.dry_run:
+        log_path = os.path.join(cfg.edopro_path, f"Sync-Failed-{timestamp}.txt")
         try:
             with open(log_path, "w", encoding="utf-8") as file_obj:
                 file_obj.write(
                     f"EDOPro HD Sync - cards with no artwork found ({len(stats.failed_cards)} total)\n"
                 )
+                if cfg.save_report:
+                    file_obj.write("Full details also in the sync report.\n")
                 file_obj.write(
                     "These are usually custom or fan-made cards with no official artwork source.\n"
                 )
@@ -582,10 +631,9 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config, runtime
             pass
 
     if cfg.save_report:
-        now = datetime.now()
         report_path = os.path.join(
             cfg.edopro_path,
-            f"sync-report-{now.strftime('%Y%m%d-%H%M%S')}.txt",
+            f"sync-report-{timestamp}.txt",
         )
         try:
             with open(report_path, "w", encoding="utf-8") as file_obj:
@@ -727,7 +775,12 @@ async def run(cfg: Config):
                         except asyncio.QueueEmpty:
                             return
                         name = id_to_name[card_id]
-                        official = find_official_match(name, name_to_official, cfg.suffixes)
+                        official = find_official_match(
+                            name,
+                            name_to_official,
+                            cfg.suffixes,
+                            quiet=cfg.quiet,
+                        )
                         manual = manual_map.get(str(card_id))
                         await download_card(
                             session,

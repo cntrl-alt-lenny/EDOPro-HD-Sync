@@ -79,6 +79,6 @@ The CI matrix builds:
 
 ## Output files
 - `pics/{id}.jpg` — downloaded card images (in the EDOPro folder)
-- `sync-failed.txt` — list of cards that couldn't be downloaded anywhere (written after each run if failures exist). Custom fan cards always end up here — that's expected.
+- `Sync-Failed-YYYYMMDD-HHMMSS.txt` — optional failed-card list, written only when `--save-failures` or `save_failures` is enabled. Custom fan cards often end up here — that's expected.
 - `config.json` — optional user config (generated with `--generate-config`)
 - `manual_map.json` — optional per-card ID overrides

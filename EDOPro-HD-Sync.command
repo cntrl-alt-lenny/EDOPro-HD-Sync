@@ -55,6 +55,12 @@ case "$save_report" in
     [Yy]|[Yy][Ee][Ss]) FLAGS+=(--save-report) ;;
 esac
 
+read -rp "Save a timestamped failed-card list (.txt)? [y/N]: " save_failures
+echo ""
+case "$save_failures" in
+    [Yy]|[Yy][Ee][Ss]) FLAGS+=(--save-failures) ;;
+esac
+
 "$BINARY" "${FLAGS[@]}"
 
 echo ""

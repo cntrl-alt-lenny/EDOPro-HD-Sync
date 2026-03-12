@@ -17,6 +17,7 @@ DEFAULTS = {
     "concurrency": 50,
     "max_retries": 3,
     "timeout": 30,
+    "save_failures": False,
     "sources": {
         "official": "https://images.ygoprodeck.com/images/cards",
         "backup": "https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics",
@@ -51,6 +52,13 @@ def _clamp_min_int(name: str, value: int, minimum: int) -> int:
     if value < minimum:
         print(f"Warning: {name} must be >= {minimum}; using {minimum}.")
         return minimum
+    return value
+
+
+def _ensure_bool(name: str, value, default: bool) -> bool:
+    if not isinstance(value, bool):
+        print(f"Warning: {name} must be true or false; using {default}.")
+        return default
     return value
 
 
@@ -152,6 +160,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write a timestamped .txt sync report in the EDOPro folder.",
     )
     p.add_argument(
+        "--save-failures",
+        action="store_true",
+        default=None,
+        help="Write a timestamped .txt file of cards that still failed to sync.",
+    )
+    p.add_argument(
         "--no-pause",
         action="store_true",
         help="On Windows packaged builds, close immediately instead of waiting for Enter.",
@@ -219,6 +233,15 @@ class Config:
         self.dry_run: bool = self.cli.dry_run
         self.quiet: bool = self.cli.quiet
         self.save_report: bool = self.cli.save_report
+        self.save_failures: bool = _ensure_bool(
+            "save_failures",
+            _pick_value(
+                self.cli.save_failures,
+                file_cfg.get("save_failures"),
+                DEFAULTS["save_failures"],
+            ),
+            DEFAULTS["save_failures"],
+        )
         self.no_pause: bool = self.cli.no_pause
 
     def set_edopro_path(self, edopro_path: str, save: bool = False) -> bool:

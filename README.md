@@ -45,6 +45,7 @@ Options:
   --generate-config  Create a default config file and exit
   --quiet            Minimal output - progress bar and summary only
   --save-report      Write a timestamped .txt sync report in the EDOPro folder
+  --save-failures    Write a timestamped .txt file of cards that still failed to sync
   --no-pause         On Windows packaged builds, close immediately on exit
 ```
 
@@ -65,6 +66,7 @@ Run `python main.py --generate-config` to create an editable config file:
   "concurrency": 50,
   "max_retries": 3,
   "timeout": 30,
+  "save_failures": false,
   "sources": {
     "official": "https://images.ygoprodeck.com/images/cards",
     "backup": "https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics"
