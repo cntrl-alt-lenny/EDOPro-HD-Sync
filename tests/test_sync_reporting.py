@@ -38,7 +38,7 @@ class SyncReportingTests(unittest.TestCase):
                 quiet=False,
             )
 
-        self.assertIsNone(match)
+        self.assertEqual(match, ([], True))
         print_mock.assert_called_once()
         self.assertIn(
             'Pre-Errata lookup miss: "Firewall Dragon" (from "Firewall Dragon (Pre-Errata)")',
@@ -54,7 +54,7 @@ class SyncReportingTests(unittest.TestCase):
                 quiet=True,
             )
 
-        self.assertIsNone(match)
+        self.assertEqual(match, ([], True))
         print_mock.assert_not_called()
 
     def test_print_summary_does_not_write_failure_file_without_opt_in(self):
