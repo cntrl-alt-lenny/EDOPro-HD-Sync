@@ -9,7 +9,7 @@ It scans your local `.cdb` databases, including repository delta files used by f
 - Windows folder picker so you can choose your EDOPro install in File Explorer instead of typing a path.
 - `config.json` is stored beside the executable, or beside `main.py` when running from source.
 - Async downloads with retries and SSL cert bundling for packaged builds.
-- Smart GOAT / Pre-Errata matching plus optional `manual_map.json` overrides.
+- Smart GOAT / Pre-Errata matching, duplicate-name fallback candidates, and optional `manual_map.json` overrides.
 - Progress UI and a clearer end-of-run summary with totals, failures, speed, and runtime.
 - Cross-platform release builds for Windows, macOS, and Linux.
 
@@ -86,6 +86,8 @@ For cards that cannot be auto-matched, create `manual_map.json` in your EDOPro f
 ```
 
 That tells the app to download the image for `12345678` and save it as `511000818.jpg`.
+
+This repo also includes `manual_map.json` and `manual_map.example.json` with Blue-Eyes alternate-art safety-net mappings. They are kept mainly as examples now: duplicate-name alternate arts should auto-match, and Pre-Errata cards use the built-in `card_id - 10` fallback.
 
 ## Release Icon
 

@@ -85,7 +85,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "3.13.1"
+VERSION = "3.13.2"
 
 
 def format_duration(seconds: float) -> str:
@@ -316,15 +316,15 @@ def prompt_for_edopro_path(cfg: Config) -> list[str] | None:
         )
 
 
-def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, int]]:
+def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, list[int]]]:
     """
     Read every .cdb and return two mappings:
 
       id_to_name       - card_id -> card name (every card we know about)
-      name_to_official - name -> official id (IDs < 100,000,000 only)
+      name_to_official - name -> official ids (IDs < 100,000,000 only)
     """
     id_to_name: dict[int, str] = {}
-    name_to_official: dict[str, int] = {}
+    name_to_official: dict[str, list[int]] = {}
 
     for db in db_files:
         # Skip empty placeholder files (EDOPro ships a 0-byte cards.cdb)
@@ -339,8 +339,10 @@ def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, int]]
                 )
                 for card_id, name in cursor.fetchall():
                     id_to_name[card_id] = name
-                    if card_id < 100_000_000 and name not in name_to_official:
-                        name_to_official[name] = card_id
+                    if card_id < 100_000_000:
+                        official_ids = name_to_official.setdefault(name, [])
+                        if card_id not in official_ids:
+                            official_ids.append(card_id)
         except sqlite3.Error as exc:
             console.print(
                 f"[yellow]Error reading {db}: {exc}[/yellow]"
@@ -355,25 +357,28 @@ def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, int]]
 
 def find_official_match(
     name: str,
-    name_to_official: dict[str, int],
+    name_to_official: dict[str, list[int]],
     suffixes: list[str],
     quiet: bool = False,
-) -> int | None:
-    """Try to resolve a card name to its official Konami ID."""
-    if name in name_to_official:
-        return name_to_official[name]
+) -> tuple[list[int], bool]:
+    """Try to resolve a card name to one or more official Konami IDs."""
+    pre_errata_miss = False
+
     for suffix in suffixes:
         if name.endswith(suffix):
             clean = name[: -len(suffix)]
             if clean in name_to_official:
-                return name_to_official[clean]
-            if not quiet and "Pre-Errata" in suffix:
-                console.print(
-                    f'[dim]Pre-Errata lookup miss: "{clean}" (from "{name}")[/dim]'
-                    if RICH_AVAILABLE
-                    else f'Pre-Errata lookup miss: "{clean}" (from "{name}")'
-                )
-    return None
+                return name_to_official[clean], False
+            if "Pre-Errata" in suffix:
+                pre_errata_miss = True
+                if not quiet:
+                    console.print(
+                        f'[dim]Pre-Errata lookup miss: "{clean}" (from "{name}")[/dim]'
+                        if RICH_AVAILABLE
+                        else f'Pre-Errata lookup miss: "{clean}" (from "{name}")'
+                    )
+
+    return name_to_official.get(name, []), pre_errata_miss
 
 
 def load_manual_map(path: str) -> dict[str, str]:
@@ -468,14 +473,15 @@ async def download_card(
     session: aiohttp.ClientSession,
     card_id: int,
     name: str,
-    official_match: int | None,
+    official_matches: list[int],
     manual_match: str | None,
+    is_pre_errata_miss: bool,
     cfg: Config,
     stats: DownloadStats,
     progress=None,
     task_id=None,
 ) -> None:
-    """Download a single card image using the 3-strategy waterfall."""
+    """Download a single card image using the full waterfall."""
     filepath = os.path.join(cfg.pics_path, f"{card_id}.jpg")
 
     if not cfg.force and os.path.exists(filepath):
@@ -485,7 +491,14 @@ async def download_card(
         return
 
     if cfg.dry_run:
-        tag = "manual-map" if manual_match else ("hd-match" if official_match else "fallback")
+        if manual_match:
+            tag = "manual-map"
+        elif official_matches:
+            tag = "hd-match"
+        elif is_pre_errata_miss:
+            tag = "pre-errata-offset"
+        else:
+            tag = "fallback"
         console.print(
             f"  [dim]Would download:[/dim] {name} ({card_id}) [{tag}]"
             if RICH_AVAILABLE
@@ -505,7 +518,9 @@ async def download_card(
                 progress.advance(task_id)
             return
 
-    if official_match and official_match != card_id:
+    for official_match in official_matches:
+        if official_match == card_id:
+            continue
         url = f"{cfg.sources['official']}/{official_match}.jpg"
         if await _try_download(session, url, filepath, timeout, cfg.max_retries):
             stats.record_success(card_id, "ok_hd")
@@ -517,6 +532,14 @@ async def download_card(
         url = f"{cfg.sources['official']}/{card_id}.jpg"
         if await _try_download(session, url, filepath, timeout, cfg.max_retries):
             stats.record_success(card_id, "ok_hd")
+            if progress and task_id is not None:
+                progress.advance(task_id)
+            return
+
+    if is_pre_errata_miss and card_id >= 10:
+        url = f"{cfg.sources['official']}/{card_id - 10}.jpg"
+        if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+            stats.ok_hd += 1
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
@@ -752,11 +775,12 @@ async def run(cfg: Config):
         )
 
         id_to_name, name_to_official = scan_databases(dbs)
+        official_candidate_count = sum(len(ids) for ids in name_to_official.values())
         manual_map = load_manual_map(cfg.manual_map_file)
         console.print(
-            f"[dim]Indexed {len(id_to_name):,} cards  |  {len(name_to_official):,} HD candidates  |  {len(manual_map)} manual overrides[/dim]"
+            f"[dim]Indexed {len(id_to_name):,} cards  |  {official_candidate_count:,} HD candidates  |  {len(manual_map)} manual overrides[/dim]"
             if RICH_AVAILABLE
-            else f"Indexed {len(id_to_name):,} cards  |  {len(name_to_official):,} HD candidates  |  {len(manual_map)} manual overrides"
+            else f"Indexed {len(id_to_name):,} cards  |  {official_candidate_count:,} HD candidates  |  {len(manual_map)} manual overrides"
         )
 
         if cfg.force:
@@ -831,7 +855,7 @@ async def run(cfg: Config):
                         except asyncio.QueueEmpty:
                             return
                         name = id_to_name[card_id]
-                        official = find_official_match(
+                        official, is_pre_errata_miss = find_official_match(
                             name,
                             name_to_official,
                             cfg.suffixes,
@@ -844,6 +868,7 @@ async def run(cfg: Config):
                             name,
                             official,
                             manual,
+                            is_pre_errata_miss,
                             cfg,
                             stats,
                             progress,

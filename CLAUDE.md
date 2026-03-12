@@ -34,20 +34,21 @@ EDOPro stores cards in SQLite `.cdb` files. The tool scans:
 
 From these it builds two maps:
 - `id_to_name` — every card ID → name
-- `name_to_official` — name → official Konami ID (only IDs < 100,000,000)
+- `name_to_official` — name → all official Konami IDs seen for that name (only IDs < 100,000,000)
 
 ### Download waterfall (in order, stops at first success)
 1. **Manual override** — `manual_map.json` lets users pin specific card IDs
-2. **Name-matched HD** — strips GOAT/Pre-Errata suffixes, looks up the real card's ID on ygoprodeck
+2. **Name-matched HD** — strips GOAT/Pre-Errata suffixes, tries every matching official ID on ygoprodeck until one works
 3. **Direct ID on ygoprodeck** — `https://images.ygoprodeck.com/images/cards/{id}.jpg` (skipped for IDs ≥ 100M, which ygoprodeck never has)
-4. **ProjectIgnis backup** — `https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics/{id}.jpg`
+4. **Pre-Errata offset fallback** — if a Pre-Errata suffix matched but the base card was missing from the scanned DBs, try `card_id - 10` on ygoprodeck
+5. **ProjectIgnis backup** — `https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics/{id}.jpg`
 
 ### Card ID rules
 - IDs < 100,000,000 → official Konami cards (ygoprodeck has them)
 - IDs ≥ 100,000,000 → custom/fan/unofficial cards (skip ygoprodeck, try backup only)
 
 ### GOAT / Pre-Errata trick
-Cards like "Dark Magician GOAT" have a custom DB ID but the same artwork as "Dark Magician". The suffix-stripping logic removes known suffixes (` GOAT`, ` (Pre-Errata)`, etc.) and looks up the base name in `name_to_official` to find the real Konami ID, then downloads that HD image for the custom card's ID.
+Cards like "Dark Magician GOAT" have a custom DB ID but the same artwork as "Dark Magician". The suffix-stripping logic removes known suffixes (` GOAT`, ` (Pre-Errata)`, etc.) and looks up the base name in `name_to_official` to find the real Konami ID, then downloads that HD image for the custom card's ID. If a Pre-Errata card's base name is missing from the scanned DBs, its GOAT DB ID is usually the real passcode + 10, so the downloader gets one last ygoprodeck try with `card_id - 10` before falling back to ProjectIgnis.
 
 ### Concurrency
 50 async workers drain a shared `asyncio.Queue`. Each worker loops until the queue is empty. This keeps exactly 50 requests in flight at all times (not 22,000 simultaneous coroutines).
@@ -81,4 +82,5 @@ The CI matrix builds:
 - `pics/{id}.jpg` — downloaded card images (in the EDOPro folder)
 - `Sync-Failed-YYYYMMDD-HHMMSS.txt` — optional failed-card list, written only when `--save-failures` or `save_failures` is enabled. Custom fan cards often end up here — that's expected.
 - `config.json` — optional user config (generated with `--generate-config`)
-- `manual_map.json` — optional per-card ID overrides
+- `manual_map.json` — optional per-card ID overrides. This repo now ships Blue-Eyes alternate-art mappings as a safety net.
+- `manual_map.example.json` — copyable example overrides with the same Blue-Eyes mappings plus a short note explaining what the file is for. Keep the example because duplicate-name alternate arts are now auto-handled, while truly odd cases may still need manual overrides.

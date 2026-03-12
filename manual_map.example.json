@@ -1,0 +1,10 @@
+{
+  "_comment": "Copy this file to manual_map.json if you need a safety-net override. The Blue-Eyes entries are kept as examples; duplicate-name alternate arts should now auto-match, and Pre-Errata cards use the automatic -10 fallback instead.",
+  "89631133": "89631139",
+  "89631134": "89631139",
+  "89631135": "89631139",
+  "89631136": "89631139",
+  "89631137": "89631139",
+  "89631138": "89631139",
+  "89631148": "89631139"
+}
