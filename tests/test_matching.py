@@ -118,6 +118,7 @@ class DownloadCardTests(unittest.TestCase):
                     set(),  # ygoprodeck_art_ids
                     self.cfg,
                     stats,
+                    {},     # default_art_cache
                 )
             )
 
@@ -133,8 +134,8 @@ class DownloadCardTests(unittest.TestCase):
         self.assertEqual(stats.ok_hd, 1)
         self.assertEqual(stats.failed, 0)
 
-    def test_download_card_prefers_backup_for_multi_art_without_api_match(self):
-        """Multi-art card whose ID is NOT on ygoprodeck should try backup first."""
+    def test_download_card_prefers_backup_for_multi_art_default_id(self):
+        """Multi-art card whose default (lowest) ID is NOT on ygoprodeck should try backup."""
         stats = main.DownloadStats()
         attempted_urls: list[str] = []
 
@@ -161,17 +162,18 @@ class DownloadCardTests(unittest.TestCase):
                     ygoprodeck_art_ids,
                     self.cfg,
                     stats,
+                    {},     # default_art_cache
                 )
             )
 
-        # Should skip own ID (not on ygoprodeck), skip name-matched
-        # alternatives (multi-art), and go to ProjectIgnis backup first.
+        # The default/lowest ID (89631136) skips speculative path and goes to backup.
         self.assertEqual(len(attempted_urls), 1)
         self.assertIn("ProjectIgnis", attempted_urls[0])
         self.assertEqual(stats.ok_fallback, 1)
 
     def test_download_card_skips_ygoprodeck_when_multi_art_lookup_is_empty(self):
-        """An empty alternate-art lookup should still avoid the wrong default art."""
+        """An empty alternate-art lookup should still avoid the wrong default art
+        for the default (lowest) ID — it goes straight to backup."""
         stats = main.DownloadStats()
         attempted_urls: list[str] = []
 
@@ -196,10 +198,106 @@ class DownloadCardTests(unittest.TestCase):
                     set(),
                     self.cfg,
                     stats,
+                    {},     # default_art_cache
                 )
             )
 
         self.assertEqual(attempted_urls, [f"{self.cfg.sources['backup']}/89631136.jpg"])
+        self.assertEqual(stats.ok_fallback, 1)
+
+    def test_download_card_speculative_keeps_distinct_art(self):
+        """Non-default multi-art ID should speculatively try YGOProDeck
+        and keep the image when it differs from the default art."""
+        stats = main.DownloadStats()
+        default_art_cache: dict[int, bytes | None] = {}
+
+        # Provide the default art on disk so the speculative comparison works
+        default_path = os.path.join(self.cfg.pics_path, "89631136.jpg")
+        with open(default_path, "wb") as f:
+            f.write(b"A" * 1024)  # default art bytes
+
+        distinct_art = b"B" * 1024  # different from default
+
+        async def fake_try_download_bytes(session, url, timeout, max_retries):
+            return distinct_art
+
+        with mock.patch.object(
+            main,
+            "_try_download_bytes",
+            new=mock.AsyncMock(side_effect=fake_try_download_bytes),
+        ):
+            asyncio.run(
+                main.download_card(
+                    object(),
+                    89631139,
+                    "Blue-Eyes White Dragon",
+                    [89631136, 89631139, 89631140],
+                    None,
+                    False,
+                    False,
+                    set(),  # ygoprodeck_art_ids — empty, so speculative kicks in
+                    self.cfg,
+                    stats,
+                    default_art_cache,
+                )
+            )
+
+        # Should have saved the distinct art
+        saved_path = os.path.join(self.cfg.pics_path, "89631139.jpg")
+        self.assertTrue(os.path.exists(saved_path))
+        with open(saved_path, "rb") as f:
+            self.assertEqual(f.read(), distinct_art)
+        self.assertEqual(stats.ok_hd, 1)
+
+    def test_download_card_speculative_discards_duplicate_art(self):
+        """Non-default multi-art ID should discard the image when it matches
+        the default art and fall through to backup."""
+        stats = main.DownloadStats()
+        default_art_cache: dict[int, bytes | None] = {}
+        attempted_urls: list[str] = []
+
+        default_art = b"A" * 1024
+
+        # Provide the default art on disk
+        default_path = os.path.join(self.cfg.pics_path, "89631136.jpg")
+        with open(default_path, "wb") as f:
+            f.write(default_art)
+
+        async def fake_try_download_bytes(session, url, timeout, max_retries):
+            return default_art  # same bytes as default — duplicate
+
+        async def fake_try_download(session, url, filepath, timeout, max_retries):
+            attempted_urls.append(url)
+            return True
+
+        with mock.patch.object(
+            main,
+            "_try_download_bytes",
+            new=mock.AsyncMock(side_effect=fake_try_download_bytes),
+        ), mock.patch.object(
+            main,
+            "_try_download",
+            new=mock.AsyncMock(side_effect=fake_try_download),
+        ):
+            asyncio.run(
+                main.download_card(
+                    object(),
+                    89631139,
+                    "Blue-Eyes White Dragon",
+                    [89631136, 89631139, 89631140],
+                    None,
+                    False,
+                    False,
+                    set(),  # ygoprodeck_art_ids — empty
+                    self.cfg,
+                    stats,
+                    default_art_cache,
+                )
+            )
+
+        # Should have discarded the duplicate and fallen through to backup
+        self.assertEqual(len(attempted_urls), 1)
+        self.assertIn("ProjectIgnis", attempted_urls[0])
         self.assertEqual(stats.ok_fallback, 1)
 
     def test_download_card_tries_pre_errata_offset_before_backup(self):
@@ -227,6 +325,7 @@ class DownloadCardTests(unittest.TestCase):
                     set(),  # ygoprodeck_art_ids
                     self.cfg,
                     stats,
+                    {},     # default_art_cache
                 )
             )
 

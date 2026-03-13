@@ -91,7 +91,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "4.1.1"
+VERSION = "4.2.0"
 ARTWORK_CACHE_VERSION = 1
 ARTWORK_CACHE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 
@@ -147,6 +147,25 @@ def should_try_direct_hd(
     if not is_multi_art_card(card_id, official_matches, is_suffix_match):
         return True
     return card_id in ygoprodeck_art_ids
+
+
+def should_try_speculative_hd(
+    card_id: int,
+    official_matches: list[int],
+    is_suffix_match: bool,
+    ygoprodeck_art_ids: set[int],
+) -> bool:
+    """True for multi-art cards not confirmed by the API that might still have unique art."""
+    if card_id >= 100_000_000:
+        return False
+    if not is_multi_art_card(card_id, official_matches, is_suffix_match):
+        return False
+    if card_id in ygoprodeck_art_ids:
+        return False
+    # The lowest official ID is the "default" art — always handled by direct HD.
+    if official_matches and card_id == min(official_matches):
+        return False
+    return True
 
 
 # Database scanning
@@ -725,6 +744,32 @@ async def _try_download(
     return False
 
 
+async def _try_download_bytes(
+    session: aiohttp.ClientSession,
+    url: str,
+    timeout: aiohttp.ClientTimeout,
+    max_retries: int,
+) -> bytes | None:
+    """Like _try_download but returns raw bytes without writing to disk."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with session.get(url, timeout=timeout) as resp:
+                if resp.status == 200:
+                    content = await resp.read()
+                    if len(content) < 512:
+                        if attempt >= max_retries:
+                            return None
+                    else:
+                        return content
+                elif resp.status == 404:
+                    return None
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            pass
+        if attempt < max_retries:
+            await asyncio.sleep(2 ** (attempt - 1))
+    return None
+
+
 async def download_card(
     session: aiohttp.ClientSession,
     card_id: int,
@@ -736,6 +781,7 @@ async def download_card(
     ygoprodeck_art_ids: set[int],
     cfg: Config,
     stats: DownloadStats,
+    default_art_cache: dict[int, bytes | None],
     progress=None,
     task_id=None,
 ) -> None:
@@ -788,6 +834,37 @@ async def download_card(
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
+
+    # Speculative download for multi-art cards not confirmed by the API.
+    # The API sometimes omits IDs that actually have unique art on YGOProDeck.
+    # Download the bytes, compare against the default art, and only keep them
+    # if they differ — this avoids saving wrong duplicate images.
+    if should_try_speculative_hd(card_id, official_matches, is_suffix_match, ygoprodeck_art_ids):
+        url = f"{cfg.sources['official']}/{card_id}.jpg"
+        candidate = await _try_download_bytes(session, url, timeout, cfg.max_retries)
+        if candidate is not None:
+            default_id = min(official_matches)
+            if default_id in default_art_cache:
+                default_bytes = default_art_cache[default_id]
+            else:
+                default_path = os.path.join(cfg.pics_path, f"{default_id}.jpg")
+                if os.path.exists(default_path):
+                    with open(default_path, "rb") as f:
+                        default_bytes = f.read()
+                else:
+                    default_url = f"{cfg.sources['official']}/{default_id}.jpg"
+                    default_bytes = await _try_download_bytes(
+                        session, default_url, timeout, cfg.max_retries,
+                    )
+                default_art_cache[default_id] = default_bytes
+
+            if default_bytes is None or candidate != default_bytes:
+                with open(filepath, "wb") as file_obj:
+                    file_obj.write(candidate)
+                stats.record_success(card_id, "ok_hd")
+                if progress and task_id is not None:
+                    progress.advance(task_id)
+                return
 
     # Name-matched alternatives — used by GOAT / Pre-Errata cards whose
     # custom DB ID doesn't exist on YGOProDeck.  Deferred for multi-art
@@ -1180,6 +1257,8 @@ async def run(cfg: Config):
                     else f"Alternate-art lookup failed for {lookup.failed_names} card names - safe backup mode will be used for them."
                 )
 
+        default_art_cache: dict[int, bytes | None] = {}
+
         def make_worker(progress=None, task_id=None):
             async def worker():
                 while True:
@@ -1200,6 +1279,7 @@ async def run(cfg: Config):
                         ygoprodeck_art_ids,
                         cfg,
                         stats,
+                        default_art_cache,
                         progress,
                         task_id,
                     )
