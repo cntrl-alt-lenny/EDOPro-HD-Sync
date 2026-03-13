@@ -85,7 +85,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "4.0.2"
+VERSION = "4.0.3"
 
 
 def format_duration(seconds: float) -> str:
@@ -639,20 +639,6 @@ async def download_card(
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
-
-    # Last resort for multi-art cards: if ProjectIgnis didn't have the image
-    # either, try a sibling's HD artwork from YGOProDeck.  The variant may
-    # not be exact, but some image is better than none.
-    if is_multi_art and ygoprodeck_art_ids:
-        for art_id in sorted(ygoprodeck_art_ids & set(official_matches)):
-            if art_id == card_id:
-                continue
-            url = f"{cfg.sources['official']}/{art_id}.jpg"
-            if await _try_download(session, url, filepath, timeout, cfg.max_retries):
-                stats.record_success(card_id, "ok_hd")
-                if progress and task_id is not None:
-                    progress.advance(task_id)
-                return
 
     stats.record_failure(card_id, name)
     if progress and task_id is not None:
