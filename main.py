@@ -22,7 +22,7 @@ from time import perf_counter
 import aiohttp
 import certifi
 
-from config import Config
+from config import Config, BUILTIN_MANUAL_MAP
 
 if sys.platform == "win32":
     try:
@@ -382,14 +382,16 @@ def find_official_match(
 
 
 def load_manual_map(path: str) -> dict[str, str]:
-    """Load the optional manual_map.json override file."""
+    """Load built-in overrides, merged with the optional manual_map.json file."""
+    result = dict(BUILTIN_MANUAL_MAP)
     if not os.path.exists(path):
-        return {}
+        return result
     try:
         with open(path, "r", encoding="utf-8") as file_obj:
-            return json.load(file_obj)
+            result.update(json.load(file_obj))
     except (json.JSONDecodeError, OSError):
-        return {}
+        pass
+    return result
 
 
 # Download logic with retries
