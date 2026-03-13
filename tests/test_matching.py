@@ -169,6 +169,38 @@ class DownloadCardTests(unittest.TestCase):
         self.assertIn("ProjectIgnis", attempted_urls[0])
         self.assertEqual(stats.ok_fallback, 1)
 
+    def test_download_card_skips_ygoprodeck_when_multi_art_lookup_is_empty(self):
+        """An empty alternate-art lookup should still avoid the wrong default art."""
+        stats = main.DownloadStats()
+        attempted_urls: list[str] = []
+
+        async def fake_try_download(session, url, filepath, timeout, max_retries):
+            attempted_urls.append(url)
+            return True
+
+        with mock.patch.object(
+            main,
+            "_try_download",
+            new=mock.AsyncMock(side_effect=fake_try_download),
+        ):
+            asyncio.run(
+                main.download_card(
+                    object(),
+                    89631136,
+                    "Blue-Eyes White Dragon",
+                    [89631136, 89631139, 89631140],
+                    None,
+                    False,
+                    False,
+                    set(),
+                    self.cfg,
+                    stats,
+                )
+            )
+
+        self.assertEqual(attempted_urls, [f"{self.cfg.sources['backup']}/89631136.jpg"])
+        self.assertEqual(stats.ok_fallback, 1)
+
     def test_download_card_tries_pre_errata_offset_before_backup(self):
         stats = main.DownloadStats()
         attempted_urls: list[str] = []

@@ -85,7 +85,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "4.0.3"
+VERSION = "4.0.4"
 
 
 def format_duration(seconds: float) -> str:
@@ -597,11 +597,7 @@ async def download_card(
     # Without the check, YGOProDeck returns HTTP 200 with the default artwork
     # for IDs it doesn't have — giving every alt-art the same wrong image.
     if card_id < 100_000_000:
-        skip_own_id = (
-            is_multi_art
-            and ygoprodeck_art_ids
-            and card_id not in ygoprodeck_art_ids
-        )
+        skip_own_id = is_multi_art and card_id not in ygoprodeck_art_ids
         if not skip_own_id:
             url = f"{cfg.sources['official']}/{card_id}.jpg"
             if await _try_download(session, url, filepath, timeout, cfg.max_retries):
