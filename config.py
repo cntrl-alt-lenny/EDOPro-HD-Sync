@@ -12,15 +12,10 @@ import json
 import os
 import sys
 
-BUILTIN_MANUAL_MAP = {
-    # Blue-Eyes alternate arts — all map to the standard Blue-Eyes artwork
-    "89631133": "89631139",
-    "89631134": "89631139",
-    "89631135": "89631139",
-    "89631136": "89631139",
-    "89631137": "89631139",
-    "89631138": "89631139",
-    "89631148": "89631139",
+BUILTIN_MANUAL_MAP: dict[str, str] = {
+    # Add card_id → image_id overrides here for cards that can't be auto-matched.
+    # Blue-Eyes alternate arts no longer need entries: the download waterfall now
+    # tries each card's own ID first, so each alt art gets its correct image.
 }
 
 DEFAULTS = {
@@ -240,7 +235,7 @@ class Config:
             "suffixes_to_strip", DEFAULTS["suffixes_to_strip"]
         )
 
-        self.force: bool = self.cli.force
+        self.force: bool = self.cli.force or getattr(sys, "frozen", False)
         self.dry_run: bool = self.cli.dry_run
         self.quiet: bool = self.cli.quiet
         self.save_report: bool = _ensure_bool(

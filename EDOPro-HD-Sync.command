@@ -1,6 +1,6 @@
 #!/bin/bash
 # EDOPro HD Sync — macOS Launcher
-# Unzip EDOPro-HD-Sync-macOS.zip into your EDOPro folder, then double-click this file.
+# Unzip into your EDOPro folder, then double-click this file.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BINARY="$SCRIPT_DIR/EDOPro-HD-Sync-macOS"
@@ -34,28 +34,7 @@ fi
 # triggering a second (or third) Gatekeeper security warning.
 xattr -d com.apple.quarantine "$BINARY" 2>/dev/null
 
-# ── Menu ──────────────────────────────────────────────────────────────────────
-echo ""
-echo "EDOPro HD Sync Launcher"
-echo "1) Sync missing cards only"
-echo "2) Refresh all card images (overwrite existing) [default]"
-echo ""
-read -rp "Choose [1-2] or press Enter for default: " choice
-echo ""
-
-FLAGS=()
-case "$choice" in
-    1) ;;
-    *) FLAGS+=(--force) ;;
-esac
-
-read -rp "Save a sync report? (includes summary + any failed cards) [y/N]: " save_report
-echo ""
-case "$save_report" in
-    [Yy]|[Yy][Ee][Ss]) FLAGS+=(--save-report) ;;
-esac
-
-"$BINARY" "${FLAGS[@]}"
+"$BINARY" --force
 
 echo ""
 read -rp "Press Enter to close this window..."

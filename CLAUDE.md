@@ -38,8 +38,8 @@ From these it builds two maps:
 
 ### Download waterfall (in order, stops at first success)
 1. **Manual override** — `manual_map.json` lets users pin specific card IDs
-2. **Name-matched HD** — strips GOAT/Pre-Errata suffixes, tries every matching official ID on ygoprodeck until one works
-3. **Direct ID on ygoprodeck** — `https://images.ygoprodeck.com/images/cards/{id}.jpg` (skipped for IDs ≥ 100M, which ygoprodeck never has)
+2. **Direct ID on ygoprodeck** — `https://images.ygoprodeck.com/images/cards/{id}.jpg` (skipped for IDs ≥ 100M, which ygoprodeck never has). Tried first so alternate artworks (Blue-Eyes, Dark Magician, etc.) each get their own correct image.
+3. **Name-matched HD** — strips GOAT/Pre-Errata suffixes, tries every matching official ID on ygoprodeck until one works. This is the fallback for GOAT/Pre-Errata cards whose custom DB ID doesn't exist on ygoprodeck.
 4. **Pre-Errata offset fallback** — if a Pre-Errata suffix matched but the base card was missing from the scanned DBs, try `card_id - 10` on ygoprodeck
 5. **ProjectIgnis backup** — `https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics/{id}.jpg`
 
@@ -82,5 +82,5 @@ The CI matrix builds:
 - `pics/{id}.jpg` — downloaded card images (in the EDOPro folder)
 - `Sync-Failed-YYYYMMDD-HHMMSS.txt` — optional failed-card list, written only when `--save-failures` or `save_failures` is enabled. Custom fan cards often end up here — that's expected.
 - `config.json` — optional user config (generated with `--generate-config`)
-- `manual_map.json` — optional per-card ID overrides. This repo now ships Blue-Eyes alternate-art mappings as a safety net.
-- `manual_map.example.json` — copyable example overrides with the same Blue-Eyes mappings plus a short note explaining what the file is for. Keep the example because duplicate-name alternate arts are now auto-handled, while truly odd cases may still need manual overrides.
+- `manual_map.json` — optional per-card ID overrides (user-created, not tracked in git)
+- `manual_map.example.json` — copyable example showing the override format. Alternate arts (Blue-Eyes, Dark Magician, etc.) are now auto-handled by the waterfall trying each card's own ID first.

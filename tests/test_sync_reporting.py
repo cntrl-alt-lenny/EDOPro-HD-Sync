@@ -57,27 +57,27 @@ class SyncReportingTests(unittest.TestCase):
         self.assertEqual(match, ([], True))
         print_mock.assert_not_called()
 
-    def test_print_summary_does_not_write_failure_file_without_opt_in(self):
+    def test_print_summary_does_not_write_report_without_opt_in(self):
         stats = main.DownloadStats()
         stats.record_failure(12345678, "Missing Artwork Card")
-        cfg = self.make_cfg()
-        fixed_now = datetime(2026, 3, 12, 14, 5, 6)
+        cfg = self.make_cfg(quiet=True)
 
         with mock.patch.object(main, "RICH_AVAILABLE", True), mock.patch.object(
             main.console, "print"
-        ), mock.patch.object(main.console, "rule"), mock.patch.object(main, "datetime") as datetime_mock:
-            datetime_mock.now.return_value = fixed_now
-            main.print_summary(stats, 1, cfg, 5.0)
+        ), mock.patch.object(main.console, "rule"):
+            main.print_summary(stats, cfg, 5.0)
 
-        self.assertFalse(
-            os.path.exists(os.path.join(self.edopro_path, "Sync-Failed-20260312-140506.txt"))
-        )
+        # No report files should be created when save_report is False and quiet is True.
+        report_files = [f for f in os.listdir(self.edopro_path) if f.startswith("sync-report")]
+        self.assertEqual(report_files, [])
 
-    def test_print_summary_writes_combined_report(self):
-        stats = main.DownloadStats()
+    def test_print_summary_writes_report_when_save_report_is_set(self):
+        rush_ids = {200000001}
+        stats = main.DownloadStats(rush_ids=rush_ids)
         stats.record_success(12345678, "ok_hd")
         stats.record_success(100000001, "ok_fallback")
         stats.record_failure(100000002, "Fan Card")
+        stats.record_failure(200000001, "Rush Card")
         cfg = self.make_cfg(save_report=True, quiet=True)
         fixed_now = datetime(2026, 3, 12, 14, 5, 6)
 
@@ -85,7 +85,7 @@ class SyncReportingTests(unittest.TestCase):
             main.console, "print"
         ), mock.patch.object(main.console, "rule"), mock.patch.object(main, "datetime") as datetime_mock:
             datetime_mock.now.return_value = fixed_now
-            main.print_summary(stats, 3, cfg, 12.0)
+            main.print_summary(stats, cfg, 12.0)
 
         report_path = os.path.join(self.edopro_path, "sync-report-20260312-140506.txt")
         self.assertTrue(os.path.exists(report_path))
@@ -93,11 +93,10 @@ class SyncReportingTests(unittest.TestCase):
         with open(report_path, "r", encoding="utf-8") as file_obj:
             report_contents = file_obj.read()
 
-        self.assertIn("- Downloaded: 2", report_contents)
-        self.assertIn("- Unavailable (unofficial): 1", report_contents)
-        self.assertIn("- Unavailable (other): 0", report_contents)
-        self.assertIn("- Success rate: 100.0%", report_contents)
-        self.assertIn("100000002\tFan Card", report_contents)
+        self.assertIn("Downloaded:      2", report_contents)
+        self.assertIn("Unavailable:     2", report_contents)
+        self.assertIn("Rush Duel cards:", report_contents)
+        self.assertIn("Anime / fan-made:", report_contents)
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ New Claude Files/
 
 # Generated output files (personal to each user's run)
 config.json
+manual_map.json
 sync-report-*.txt
 Sync-Failed-*.txt
 

@@ -34,7 +34,7 @@ class OfficialMatchingTests(unittest.TestCase):
                 )
                 conn.commit()
 
-            id_to_name, name_to_official = main.scan_databases([db_path])
+            id_to_name, name_to_official, rush_ids = main.scan_databases([db_path])
 
         self.assertEqual(id_to_name[89631133], "Blue-Eyes White Dragon")
         self.assertEqual(
@@ -88,12 +88,13 @@ class DownloadCardTests(unittest.TestCase):
         self.cfg.set_edopro_path(self.temp_dir.name)
         os.makedirs(self.cfg.pics_path, exist_ok=True)
 
-    def test_download_card_tries_multiple_candidates_until_one_succeeds(self):
+    def test_download_card_tries_own_id_first_then_alternatives(self):
         stats = main.DownloadStats()
         attempted_urls: list[str] = []
 
         async def fake_try_download(session, url, filepath, timeout, max_retries):
             attempted_urls.append(url)
+            # Own ID fails, but a name-matched alternative succeeds.
             return url.endswith("/89631139.jpg")
 
         with mock.patch.object(
@@ -114,9 +115,11 @@ class DownloadCardTests(unittest.TestCase):
                 )
             )
 
+        # Card's own ID is tried first, then alternatives (skipping self).
         self.assertEqual(
             attempted_urls,
             [
+                f"{self.cfg.sources['official']}/89631133.jpg",
                 f"{self.cfg.sources['official']}/89631134.jpg",
                 f"{self.cfg.sources['official']}/89631139.jpg",
             ],
