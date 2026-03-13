@@ -49,16 +49,10 @@ case "$choice" in
     *) FLAGS+=(--force) ;;
 esac
 
-read -rp "Save a timestamped sync report (.txt)? [y/N]: " save_report
+read -rp "Save a sync report? (includes summary + any failed cards) [y/N]: " save_report
 echo ""
 case "$save_report" in
     [Yy]|[Yy][Ee][Ss]) FLAGS+=(--save-report) ;;
-esac
-
-read -rp "Save a timestamped failed-card list (.txt)? [y/N]: " save_failures
-echo ""
-case "$save_failures" in
-    [Yy]|[Yy][Ee][Ss]) FLAGS+=(--save-failures) ;;
 esac
 
 "$BINARY" "${FLAGS[@]}"
