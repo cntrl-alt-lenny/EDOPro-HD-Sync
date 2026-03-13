@@ -85,7 +85,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "4.0.0"
+VERSION = "4.0.1"
 
 
 def format_duration(seconds: float) -> str:
@@ -365,15 +365,20 @@ def find_official_match(
     name_to_official: dict[str, list[int]],
     suffixes: list[str],
     quiet: bool = False,
-) -> tuple[list[int], bool]:
-    """Try to resolve a card name to one or more official Konami IDs."""
+) -> tuple[list[int], bool, bool]:
+    """Try to resolve a card name to one or more official Konami IDs.
+
+    Returns (official_ids, is_pre_errata_miss, is_suffix_match).
+    is_suffix_match is True when matches came from stripping a GOAT/Pre-Errata
+    suffix rather than a direct name lookup.
+    """
     pre_errata_miss = False
 
     for suffix in suffixes:
         if name.endswith(suffix):
             clean = name[: -len(suffix)]
             if clean in name_to_official:
-                return name_to_official[clean], False
+                return name_to_official[clean], False, True
             if "Pre-Errata" in suffix:
                 pre_errata_miss = True
                 if not quiet:
@@ -383,7 +388,7 @@ def find_official_match(
                         else f'Pre-Errata lookup miss: "{clean}" (from "{name}")'
                     )
 
-    return name_to_official.get(name, []), pre_errata_miss
+    return name_to_official.get(name, []), pre_errata_miss, False
 
 
 def load_manual_map(path: str) -> dict[str, str]:
@@ -397,6 +402,45 @@ def load_manual_map(path: str) -> dict[str, str]:
     except (json.JSONDecodeError, OSError):
         pass
     return result
+
+
+# Alternate artwork resolution
+
+async def fetch_ygoprodeck_artwork_ids(
+    session: aiohttp.ClientSession,
+    multi_art_names: list[str],
+    ssl_ctx: ssl.SSLContext,
+) -> set[int]:
+    """Query the YGOProDeck API to discover which card IDs have distinct artwork.
+
+    For cards with multiple official IDs (alternate artworks), YGOProDeck may
+    not have unique images for every ID.  IDs NOT in the returned set should
+    skip YGOProDeck and fall through to the ProjectIgnis backup so they get
+    the correct artwork instead of a duplicate default image.
+    """
+    api_base = "https://db.ygoprodeck.com/api/v7/cardinfo.php"
+    artwork_ids: set[int] = set()
+    sem = asyncio.Semaphore(10)
+
+    async def fetch_one(name: str) -> None:
+        async with sem:
+            try:
+                timeout = aiohttp.ClientTimeout(total=10)
+                async with session.get(
+                    api_base, params={"name": name}, timeout=timeout, ssl=ssl_ctx,
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        for card in data.get("data", []):
+                            for img in card.get("card_images", []):
+                                img_id = img.get("id")
+                                if img_id is not None:
+                                    artwork_ids.add(int(img_id))
+            except Exception:
+                pass  # If the API fails for one card, we just skip it
+
+    await asyncio.gather(*(fetch_one(name) for name in multi_art_names))
+    return artwork_ids
 
 
 # Download logic with retries
@@ -495,6 +539,8 @@ async def download_card(
     official_matches: list[int],
     manual_match: str | None,
     is_pre_errata_miss: bool,
+    is_suffix_match: bool,
+    ygoprodeck_art_ids: set[int],
     cfg: Config,
     stats: DownloadStats,
     progress=None,
@@ -529,6 +575,15 @@ async def download_card(
 
     timeout = aiohttp.ClientTimeout(total=cfg.timeout)
 
+    # A "multi-art" card is an official card whose name maps to multiple
+    # official IDs AND whose matches came from a direct name lookup (not
+    # suffix stripping for GOAT / Pre-Errata cards).
+    is_multi_art = (
+        card_id < 100_000_000
+        and not is_suffix_match
+        and len(official_matches) > 1
+    )
+
     if manual_match:
         url = f"{cfg.sources['official']}/{manual_match}.jpg"
         if await _try_download(session, url, filepath, timeout, cfg.max_retries):
@@ -537,28 +592,37 @@ async def download_card(
                 progress.advance(task_id)
             return
 
-    # Try the card's own ID first — this ensures alternate artworks (e.g.
-    # different Blue-Eyes or Dark Magician arts) each get their correct image
-    # instead of being overwritten by a name-matched sibling.
+    # Try the card's own ID on YGOProDeck.  For multi-art cards, only attempt
+    # this when the API confirmed YGOProDeck has distinct artwork for this ID.
+    # Without the check, YGOProDeck returns HTTP 200 with the default artwork
+    # for IDs it doesn't have — giving every alt-art the same wrong image.
     if card_id < 100_000_000:
-        url = f"{cfg.sources['official']}/{card_id}.jpg"
-        if await _try_download(session, url, filepath, timeout, cfg.max_retries):
-            stats.record_success(card_id, "ok_hd")
-            if progress and task_id is not None:
-                progress.advance(task_id)
-            return
+        skip_own_id = (
+            is_multi_art
+            and ygoprodeck_art_ids
+            and card_id not in ygoprodeck_art_ids
+        )
+        if not skip_own_id:
+            url = f"{cfg.sources['official']}/{card_id}.jpg"
+            if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+                stats.record_success(card_id, "ok_hd")
+                if progress and task_id is not None:
+                    progress.advance(task_id)
+                return
 
-    # Fall back to name-matched alternatives (for GOAT / Pre-Errata cards
-    # whose custom DB ID doesn't exist on ygoprodeck).
-    for official_match in official_matches:
-        if official_match == card_id:
-            continue
-        url = f"{cfg.sources['official']}/{official_match}.jpg"
-        if await _try_download(session, url, filepath, timeout, cfg.max_retries):
-            stats.record_success(card_id, "ok_hd")
-            if progress and task_id is not None:
-                progress.advance(task_id)
-            return
+    # Name-matched alternatives — used by GOAT / Pre-Errata cards whose
+    # custom DB ID doesn't exist on YGOProDeck.  Skipped for multi-art cards
+    # because trying a sibling's ID would download the wrong artwork.
+    if not is_multi_art:
+        for official_match in official_matches:
+            if official_match == card_id:
+                continue
+            url = f"{cfg.sources['official']}/{official_match}.jpg"
+            if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+                stats.record_success(card_id, "ok_hd")
+                if progress and task_id is not None:
+                    progress.advance(task_id)
+                return
 
     if is_pre_errata_miss and card_id >= 10:
         url = f"{cfg.sources['official']}/{card_id - 10}.jpg"
@@ -753,14 +817,14 @@ async def run(cfg: Config):
         return
 
     # Pre-compute match info for every card to avoid redundant lookups in workers.
-    card_match_info: dict[int, tuple[list[int], str | None, bool]] = {}
+    card_match_info: dict[int, tuple[list[int], str | None, bool, bool]] = {}
     for card_id in missing_ids:
         name = id_to_name[card_id]
-        official, is_pre_errata_miss = find_official_match(
+        official, is_pre_errata_miss, is_suffix_match = find_official_match(
             name, name_to_official, cfg.suffixes, quiet=True,
         )
         manual = manual_map.get(str(card_id))
-        card_match_info[card_id] = (official, manual, is_pre_errata_miss)
+        card_match_info[card_id] = (official, manual, is_pre_errata_miss, is_suffix_match)
 
     stats = DownloadStats(rush_ids=rush_ids)
     queue: asyncio.Queue[int] = asyncio.Queue()
@@ -795,6 +859,22 @@ async def run(cfg: Config):
                 else f"Cannot reach image server: {exc}"
             )
 
+        # For cards with multiple official IDs (alternate artworks), query
+        # the YGOProDeck API to find out which IDs have distinct artwork.
+        multi_art_names = [
+            name for name, ids in name_to_official.items() if len(ids) > 1
+        ]
+        ygoprodeck_art_ids: set[int] = set()
+        if multi_art_names:
+            console.print(
+                f"[dim]Resolving {len(multi_art_names)} alternate artwork cards...[/dim]"
+                if RICH_AVAILABLE
+                else f"Resolving {len(multi_art_names)} alternate artwork cards..."
+            )
+            ygoprodeck_art_ids = await fetch_ygoprodeck_artwork_ids(
+                session, multi_art_names, ssl_ctx,
+            )
+
         def make_worker(progress=None, task_id=None):
             async def worker():
                 while True:
@@ -803,7 +883,7 @@ async def run(cfg: Config):
                     except asyncio.QueueEmpty:
                         return
                     name = id_to_name[card_id]
-                    official, manual, is_pre_errata_miss = card_match_info[card_id]
+                    official, manual, is_pre_errata_miss, is_suffix_match = card_match_info[card_id]
                     await download_card(
                         session,
                         card_id,
@@ -811,6 +891,8 @@ async def run(cfg: Config):
                         official,
                         manual,
                         is_pre_errata_miss,
+                        is_suffix_match,
+                        ygoprodeck_art_ids,
                         cfg,
                         stats,
                         progress,

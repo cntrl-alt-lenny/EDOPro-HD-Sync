@@ -5,7 +5,7 @@
 ![Release](https://img.shields.io/github/v/release/cntrl-alt-lenny/EDOPro-HD-Sync)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
-A fast, automatic HD artwork downloader for [EDOPro](https://github.com/ProjectIgnis/EDOPro). Scans your card databases, finds missing images, and downloads the best available artwork — including GOAT, Pre-Errata, and alternate art variants.
+A fast, automatic HD artwork downloader for [EDOPro](https://github.com/edo9300/edopro). Scans your card databases, finds missing images, and downloads the best available artwork — including GOAT, Pre-Errata, and alternate art variants.
 
 ## Quick Start
 

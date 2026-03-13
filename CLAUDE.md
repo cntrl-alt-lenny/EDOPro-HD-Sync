@@ -38,8 +38,8 @@ From these it builds two maps:
 
 ### Download waterfall (in order, stops at first success)
 1. **Manual override** — `manual_map.json` lets users pin specific card IDs
-2. **Direct ID on ygoprodeck** — `https://images.ygoprodeck.com/images/cards/{id}.jpg` (skipped for IDs ≥ 100M, which ygoprodeck never has). Tried first so alternate artworks (Blue-Eyes, Dark Magician, etc.) each get their own correct image.
-3. **Name-matched HD** — strips GOAT/Pre-Errata suffixes, tries every matching official ID on ygoprodeck until one works. This is the fallback for GOAT/Pre-Errata cards whose custom DB ID doesn't exist on ygoprodeck.
+2. **Direct ID on ygoprodeck** — `https://images.ygoprodeck.com/images/cards/{id}.jpg` (skipped for IDs ≥ 100M, which ygoprodeck never has). Tried first so alternate artworks (Blue-Eyes, Dark Magician, etc.) each get their own correct image. For multi-art cards, the YGOProDeck API is queried at startup to learn which IDs have distinct artwork; IDs not on that list skip this step to avoid downloading the wrong image.
+3. **Name-matched HD** — strips GOAT/Pre-Errata suffixes, tries every matching official ID on ygoprodeck until one works. This is the fallback for GOAT/Pre-Errata cards whose custom DB ID doesn't exist on ygoprodeck. Skipped for multi-art cards (would give the wrong artwork).
 4. **Pre-Errata offset fallback** — if a Pre-Errata suffix matched but the base card was missing from the scanned DBs, try `card_id - 10` on ygoprodeck
 5. **ProjectIgnis backup** — `https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics/{id}.jpg`
 
