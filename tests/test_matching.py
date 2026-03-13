@@ -7,6 +7,7 @@ from unittest import mock
 
 import main
 from config import Config, DEFAULTS
+from tricky_cards import KNOWN_MULTI_ART_CARDS, SAFE_MULTI_ART_FALLBACK_CASE
 
 
 class OfficialMatchingTests(unittest.TestCase):
@@ -239,6 +240,46 @@ class DownloadCardTests(unittest.TestCase):
         self.assertEqual(stats.ok_hd, 1)
         self.assertEqual(stats.ok_fallback, 0)
         self.assertEqual(stats.failed, 0)
+
+
+class TrickyCardFixtureTests(unittest.TestCase):
+    def test_real_world_multi_art_fixtures_are_available(self):
+        name_to_official = {
+            fixture["name"]: fixture["official_ids"] for fixture in KNOWN_MULTI_ART_CARDS
+        }
+
+        self.assertEqual(
+            name_to_official["Blue-Eyes White Dragon"][0],
+            89631136,
+        )
+        self.assertEqual(
+            name_to_official["Dark Magician"][-1],
+            46986423,
+        )
+        self.assertEqual(
+            name_to_official["Red-Eyes Black Dragon"][-1],
+            74677431,
+        )
+
+    def test_should_try_direct_hd_only_for_confirmed_multi_art_ids(self):
+        confirmed_art_ids = set(SAFE_MULTI_ART_FALLBACK_CASE["confirmed_art_ids"])
+
+        self.assertFalse(
+            main.should_try_direct_hd(
+                SAFE_MULTI_ART_FALLBACK_CASE["card_id"],
+                SAFE_MULTI_ART_FALLBACK_CASE["official_matches"],
+                False,
+                set(),
+            )
+        )
+        self.assertTrue(
+            main.should_try_direct_hd(
+                min(confirmed_art_ids),
+                SAFE_MULTI_ART_FALLBACK_CASE["official_matches"],
+                False,
+                confirmed_art_ids,
+            )
+        )
 
 
 if __name__ == "__main__":

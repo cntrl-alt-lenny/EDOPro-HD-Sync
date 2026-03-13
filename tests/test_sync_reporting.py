@@ -75,6 +75,7 @@ class SyncReportingTests(unittest.TestCase):
         rush_ids = {200000001}
         stats = main.DownloadStats(rush_ids=rush_ids)
         stats.record_success(12345678, "ok_hd")
+        stats.record_success(23456789, "ok_fallback")
         stats.record_success(100000001, "ok_fallback")
         stats.record_failure(100000002, "Fan Card")
         stats.record_failure(200000001, "Rush Card")
@@ -93,10 +94,20 @@ class SyncReportingTests(unittest.TestCase):
         with open(report_path, "r", encoding="utf-8") as file_obj:
             report_contents = file_obj.read()
 
-        self.assertIn("Downloaded:      2", report_contents)
+        self.assertIn("Downloaded:      3", report_contents)
+        self.assertIn("Correct backup art: 1", report_contents)
         self.assertIn("Unavailable:     2", report_contents)
         self.assertIn("Rush Duel cards:", report_contents)
         self.assertIn("Anime / fan-made:", report_contents)
+
+    def test_summary_rows_include_correct_backup_art_count(self):
+        stats = main.DownloadStats()
+        stats.record_success(12345678, "ok_fallback")
+        cfg = self.make_cfg(quiet=True)
+
+        rows = main._build_summary_rows(stats, cfg, 5.0)
+
+        self.assertIn(("Correct backup art", "1", "cyan"), rows)
 
 
 if __name__ == "__main__":

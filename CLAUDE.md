@@ -7,6 +7,13 @@ The owner is a non-programmer. Keep explanations plain and avoid jargon. Prefer 
 
 **After committing and pushing any change, always offer to push a version tag so a new release is built automatically.** The owner will not know to do this themselves. Suggest the next patch/minor version based on what changed.
 
+**Release packaging requirements must be preserved.** Keep the platform bundle names in this format:
+- `EDOPro HD Sync - Windows Version (VERSION).zip`
+- `EDOPro HD Sync - MacOS Version (VERSION).zip`
+- `EDOPro HD Sync - Linux Version (VERSION).zip`
+
+Each platform bundle must include a platform-specific `ReadMe.txt`, and macOS/Windows should stay on `.zip` rather than `.7z` because native unzip support is better for non-technical users.
+
 ## Running / developing locally
 ```bash
 pip install -r requirements.txt
@@ -14,6 +21,7 @@ python main.py                  # normal sync
 python main.py --dry-run        # preview only
 python main.py --force          # re-download everything
 python main.py --generate-config  # write a default config.json
+python main.py --health-check   # quick offline sanity check
 ```
 
 ## Project structure
@@ -43,6 +51,8 @@ From these it builds two maps:
 4. **Pre-Errata offset fallback** — if a Pre-Errata suffix matched but the base card was missing from the scanned DBs, try `card_id - 10` on ygoprodeck
 5. **ProjectIgnis backup** — `https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics/{id}.jpg`
 
+Confirmed alternate-art IDs are cached in `alternate-art-cache.json` beside the tool so repeated runs do not depend entirely on the live YGOProDeck API.
+
 ### Card ID rules
 - IDs < 100,000,000 → official Konami cards (ygoprodeck has them)
 - IDs ≥ 100,000,000 → custom/fan/unofficial cards (skip ygoprodeck, try backup only)
@@ -64,9 +74,11 @@ git tag v3.x.x && git push origin v3.x.x
 ```
 
 The CI matrix builds:
-- `EDOPro-HD-Sync-Windows-VERSION.zip` (windows-latest, contains `EDOPro-HD-Sync.exe` at the ZIP root)
-- `EDOPro-HD-Sync-macOS.zip` — contains the binary + `EDOPro-HD-Sync.command` (macos-latest)
-- `EDOPro-HD-Sync-Linux.AppImage` (ubuntu-latest)
+- `EDOPro HD Sync - Windows Version (VERSION).zip`
+- `EDOPro HD Sync - MacOS Version (VERSION).zip`
+- `EDOPro HD Sync - Linux Version (VERSION).zip`
+
+Each bundle includes a platform-specific `ReadMe.txt`. The workflow also smoke-tests the packaged binary with `--health-check` before the release asset is published.
 
 `fail-fast: false` is set so a failure on one platform doesn't cancel the others.
 
@@ -80,7 +92,7 @@ The CI matrix builds:
 
 ## Output files
 - `pics/{id}.jpg` — downloaded card images (in the EDOPro folder)
-- `Sync-Failed-YYYYMMDD-HHMMSS.txt` — optional failed-card list, written only when `--save-failures` or `save_failures` is enabled. Custom fan cards often end up here — that's expected.
+- `alternate-art-cache.json` — cached YGOProDeck alternate-art confirmations beside the tool/config
 - `config.json` — optional user config (generated with `--generate-config`)
 - `manual_map.json` — optional per-card ID overrides (user-created, not tracked in git)
 - `manual_map.example.json` — copyable example showing the override format. Alternate arts (Blue-Eyes, Dark Magician, etc.) are now auto-handled by the waterfall trying each card's own ID first.

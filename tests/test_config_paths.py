@@ -89,6 +89,21 @@ class ConfigPathTests(unittest.TestCase):
 
         self.assertTrue(cfg.save_report)
 
+    def test_alt_art_cache_file_uses_config_directory(self):
+        config_path = os.path.join(self.test_root, "nested", "config.json")
+
+        cfg = Config(["--config", config_path])
+
+        self.assertEqual(
+            cfg.alt_art_cache_file,
+            os.path.join(self.test_root, "nested", config_module.ARTWORK_CACHE_FILENAME),
+        )
+
+    def test_health_check_can_be_enabled_from_cli(self):
+        cfg = Config(["--config", os.path.join(self.test_root, "config.json"), "--health-check"])
+
+        self.assertTrue(cfg.health_check)
+
 
 if __name__ == "__main__":
     unittest.main()

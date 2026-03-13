@@ -37,6 +37,7 @@ DEFAULTS = {
 }
 
 CONFIG_FILENAME = "config.json"
+ARTWORK_CACHE_FILENAME = "alternate-art-cache.json"
 
 
 def _pick_value(cli_val, file_val, default):
@@ -170,6 +171,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="On Windows packaged builds, close immediately instead of waiting for Enter.",
     )
+    p.add_argument(
+        "--health-check",
+        action="store_true",
+        help="Run quick offline checks for tricky artwork cases and exit.",
+    )
     return p
 
 
@@ -203,6 +209,9 @@ class Config:
         self.pics_path: str = ""
         self.manual_map_file: str = os.path.join(
             os.path.dirname(self.config_path), "manual_map.json"
+        )
+        self.alt_art_cache_file: str = os.path.join(
+            os.path.dirname(self.config_path), ARTWORK_CACHE_FILENAME
         )
         self.set_edopro_path(file_cfg.get("edopro_path", DEFAULTS["edopro_path"]))
 
@@ -248,6 +257,7 @@ class Config:
             DEFAULTS["save_report"],
         )
         self.no_pause: bool = self.cli.no_pause
+        self.health_check: bool = self.cli.health_check
 
     def set_edopro_path(self, edopro_path: str, save: bool = False) -> bool:
         """Update path-derived fields and optionally persist the new folder."""
