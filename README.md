@@ -19,10 +19,10 @@
 
 ## Why It Feels Better
 
-- **Safer alternate-art handling** — avoids wrong default images when a card has many IDs
-- **Automatic fallback logic** — prefers the correct image over a misleading HD one
-- **Offline health check** — quickly verifies the historical trouble spots
-- **Simple packaged releases** — ready-to-use downloads for Windows, macOS, and Linux
+- **Single YGOProDeck catalog lookup** - asks once which artwork IDs really exist
+- **Safer alternate-art handling** - avoids wrong default images when a card has many IDs
+- **Offline health check** - quickly verifies the historical trouble spots
+- **Simple packaged releases** - ready-to-use downloads for Windows, macOS, and Linux
 
 ## Quick Start
 
@@ -39,7 +39,7 @@
 1. Download `EDOPro HD Sync - MacOS Version VERSION.zip` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
 2. Unzip into your EDOPro folder and open the `EDOPro HD Sync MacOS` folder
 3. Double-click `EDOPro-HD-Sync.command`
-4. If macOS asks about security, go to **System Settings → Privacy & Security** and allow it
+4. If macOS asks about security, go to **System Settings -> Privacy & Security** and allow it
 5. The bundle includes a Mac-specific `ReadMe.txt`
 
 ### Linux
@@ -63,22 +63,17 @@ python main.py --health-check
 
 ## How It Works
 
-Scans all `.cdb` card databases in your EDOPro folder, identifies cards with missing artwork, and downloads HD images from [YGOProDeck](https://ygoprodeck.com) with a [ProjectIgnis](https://github.com/ProjectIgnis/Images) fallback.
+Scans all `.cdb` card databases in your EDOPro folder, downloads the full [YGOProDeck](https://ygoprodeck.com) card catalog once, and then uses that exact artwork list to fetch HD images with a [ProjectIgnis](https://github.com/ProjectIgnis/Images) fallback.
 
-- **Alternate artworks** — each art variant gets its own correct image
-- **Alternate-art cache** — confirmed multi-art IDs are cached locally so future runs are faster and less dependent on live API responses
-- **GOAT format cards** — matched to their official artwork automatically
-- **Pre-Errata cards** — resolved via suffix stripping and ID offset fallback
-- **Manual overrides** — optional `manual_map.json` for edge cases
+- **Alternate artworks** - downloaded only when YGOProDeck explicitly lists that exact art ID
+- **GOAT format cards** - matched to their official artwork by stripping the GOAT suffix
+- **Pre-Errata cards** - resolved via suffix stripping, with a small ID-offset fallback for legacy edge cases
+- **Manual overrides** - optional `manual_map.json` for edge cases
 
 ## Helpful Commands
 
 - `python main.py --health-check` runs an offline sanity check for Blue-Eyes, Dark Magician, Red-Eyes, and Pre-Errata matching logic
 - `python main.py --dry-run` previews what would be downloaded
-
-## About The Cache
-
-`alternate-art-cache.json` is the tool's memory file. It remembers which alternate-art IDs were confirmed as real so future syncs are faster and safer. You normally do not need to edit it.
 
 ## Contributing
 

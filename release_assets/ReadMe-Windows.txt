@@ -10,7 +10,7 @@ Helpful notes
 -------------
 - Packaged builds refresh artwork automatically, so you do not need to add --force.
 - The tool remembers your chosen EDOPro folder in config.json beside the exe.
-- alternate-art-cache.json is also saved beside the exe to speed up future runs.
+- Each run fetches the current YGOProDeck artwork catalog so alternate arts stay accurate.
 - If Windows warns about the app, click "More info" and then "Run anyway" unless your release notes say the build is signed.
 
 Quick sanity check

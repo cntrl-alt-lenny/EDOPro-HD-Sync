@@ -18,6 +18,9 @@ class FakeResponse:
     async def __aexit__(self, exc_type, exc, tb):
         return False
 
+    async def json(self, content_type=None):
+        return {"data": []}
+
 
 class FakeSession:
     def __init__(self, *args, **kwargs):

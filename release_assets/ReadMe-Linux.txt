@@ -15,7 +15,8 @@ Helpful notes
 -------------
 - If you run it outside your EDOPro folder, the tool will ask you to choose the correct folder.
 - Packaged builds refresh artwork automatically, so you do not need to add --force.
-- config.json and alternate-art-cache.json are saved beside the AppImage.
+- config.json is saved beside the AppImage.
+- Each run fetches the current YGOProDeck artwork catalog so alternate arts stay accurate.
 
 Quick sanity check
 ------------------

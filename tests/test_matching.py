@@ -18,7 +18,8 @@ class OfficialMatchingTests(unittest.TestCase):
         workspace_root = os.getcwd()
         with tempfile.TemporaryDirectory(dir=workspace_root) as temp_dir:
             db_path = os.path.join(temp_dir, "cards.cdb")
-            with sqlite3.connect(db_path) as conn:
+            conn = sqlite3.connect(db_path)
+            try:
                 conn.execute("CREATE TABLE datas (id INTEGER PRIMARY KEY)")
                 conn.execute("CREATE TABLE texts (id INTEGER PRIMARY KEY, name TEXT)")
                 conn.executemany(
@@ -34,6 +35,8 @@ class OfficialMatchingTests(unittest.TestCase):
                     ],
                 )
                 conn.commit()
+            finally:
+                conn.close()
 
             id_to_name, name_to_official, rush_ids = main.scan_databases([db_path])
 
@@ -43,6 +46,37 @@ class OfficialMatchingTests(unittest.TestCase):
             [89631133, 89631139],
         )
         self.assertNotIn("Unofficial Blue-Eyes", name_to_official)
+
+    def test_scan_databases_sorts_official_ids_for_stable_fallback_order(self):
+        workspace_root = os.getcwd()
+        with tempfile.TemporaryDirectory(dir=workspace_root) as temp_dir:
+            db_path = os.path.join(temp_dir, "cards.cdb")
+            conn = sqlite3.connect(db_path)
+            try:
+                conn.execute("CREATE TABLE datas (id INTEGER PRIMARY KEY)")
+                conn.execute("CREATE TABLE texts (id INTEGER PRIMARY KEY, name TEXT)")
+                conn.executemany(
+                    "INSERT INTO datas (id) VALUES (?)",
+                    [(46986423,), (46986414,), (46986422,)],
+                )
+                conn.executemany(
+                    "INSERT INTO texts (id, name) VALUES (?, ?)",
+                    [
+                        (46986423, "Dark Magician"),
+                        (46986414, "Dark Magician"),
+                        (46986422, "Dark Magician"),
+                    ],
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            _, name_to_official, _ = main.scan_databases([db_path])
+
+        self.assertEqual(
+            name_to_official["Dark Magician"],
+            [46986414, 46986422, 46986423],
+        )
 
     def test_find_official_match_prefers_suffix_stripped_name(self):
         name_to_official = {
@@ -91,16 +125,20 @@ class DownloadCardTests(unittest.TestCase):
         self.cfg.set_edopro_path(self.temp_dir.name)
         os.makedirs(self.cfg.pics_path, exist_ok=True)
 
-    def test_download_card_tries_own_id_first_then_alternatives(self):
+    def test_download_card_tries_catalog_id_first_then_name_matched_alternatives(self):
         stats = main.DownloadStats()
         attempted_urls: list[str] = []
+        ygoprodeck_lookup = {
+            89631133: f"{self.cfg.sources['official']}/89631133.jpg",
+            89631134: f"{self.cfg.sources['official']}/89631134.jpg",
+            89631139: f"{self.cfg.sources['official']}/89631139.jpg",
+        }
 
         async def fake_try_download(session, url, filepath, timeout, max_retries):
             attempted_urls.append(url)
-            # Own ID fails, but a name-matched alternative succeeds.
+            # Direct catalog ID fails, but a name-matched alternative succeeds.
             return url.endswith("/89631139.jpg")
 
-        # Card 89631133 is a single-art scenario (no ygoprodeck_art_ids filter).
         with mock.patch.object(
             main,
             "_try_download",
@@ -114,15 +152,13 @@ class DownloadCardTests(unittest.TestCase):
                     [89631133, 89631134, 89631139],
                     None,
                     False,
-                    True,   # is_suffix_match — treat as suffix card so step 3 runs
-                    set(),  # ygoprodeck_art_ids
+                    True,   # Treat as a suffix match so name-matched fallbacks are allowed.
+                    ygoprodeck_lookup,
                     self.cfg,
                     stats,
-                    {},     # default_art_cache
                 )
             )
 
-        # Card's own ID is tried first, then alternatives (skipping self).
         self.assertEqual(
             attempted_urls,
             [
@@ -135,45 +171,7 @@ class DownloadCardTests(unittest.TestCase):
         self.assertEqual(stats.failed, 0)
 
     def test_download_card_prefers_backup_for_multi_art_default_id(self):
-        """Multi-art card whose default (lowest) ID is NOT on ygoprodeck should try backup."""
-        stats = main.DownloadStats()
-        attempted_urls: list[str] = []
-
-        async def fake_try_download(session, url, filepath, timeout, max_retries):
-            attempted_urls.append(url)
-            return True  # Everything succeeds
-
-        ygoprodeck_art_ids = {89631139, 89631140}  # 89631136 is NOT here
-
-        with mock.patch.object(
-            main,
-            "_try_download",
-            new=mock.AsyncMock(side_effect=fake_try_download),
-        ):
-            asyncio.run(
-                main.download_card(
-                    object(),
-                    89631136,
-                    "Blue-Eyes White Dragon",
-                    [89631136, 89631139, 89631140],
-                    None,
-                    False,
-                    False,  # is_suffix_match — direct name lookup
-                    ygoprodeck_art_ids,
-                    self.cfg,
-                    stats,
-                    {},     # default_art_cache
-                )
-            )
-
-        # The default/lowest ID (89631136) skips speculative path and goes to backup.
-        self.assertEqual(len(attempted_urls), 1)
-        self.assertIn("ProjectIgnis", attempted_urls[0])
-        self.assertEqual(stats.ok_fallback, 1)
-
-    def test_download_card_skips_ygoprodeck_when_multi_art_lookup_is_empty(self):
-        """An empty alternate-art lookup should still avoid the wrong default art
-        for the default (lowest) ID — it goes straight to backup."""
+        """Multi-art cards should not borrow another alt art when their exact ID is missing."""
         stats = main.DownloadStats()
         attempted_urls: list[str] = []
 
@@ -181,6 +179,11 @@ class DownloadCardTests(unittest.TestCase):
             attempted_urls.append(url)
             return True
 
+        ygoprodeck_lookup = {
+            89631139: f"{self.cfg.sources['official']}/89631139.jpg",
+            89631140: f"{self.cfg.sources['official']}/89631140.jpg",
+        }
+
         with mock.patch.object(
             main,
             "_try_download",
@@ -195,86 +198,27 @@ class DownloadCardTests(unittest.TestCase):
                     None,
                     False,
                     False,
-                    set(),
+                    ygoprodeck_lookup,
                     self.cfg,
                     stats,
-                    {},     # default_art_cache
                 )
             )
 
         self.assertEqual(attempted_urls, [f"{self.cfg.sources['backup']}/89631136.jpg"])
         self.assertEqual(stats.ok_fallback, 1)
 
-    def test_download_card_speculative_keeps_distinct_art(self):
-        """Non-default multi-art ID should speculatively try YGOProDeck
-        and keep the image when it differs from the default art."""
+    def test_download_card_uses_catalog_entry_for_confirmed_alt_art(self):
         stats = main.DownloadStats()
-        default_art_cache: dict[int, bytes | None] = {}
-
-        # Provide the default art on disk so the speculative comparison works
-        default_path = os.path.join(self.cfg.pics_path, "89631136.jpg")
-        with open(default_path, "wb") as f:
-            f.write(b"A" * 1024)  # default art bytes
-
-        distinct_art = b"B" * 1024  # different from default
-
-        async def fake_try_download_bytes(session, url, timeout, max_retries):
-            return distinct_art
-
-        with mock.patch.object(
-            main,
-            "_try_download_bytes",
-            new=mock.AsyncMock(side_effect=fake_try_download_bytes),
-        ):
-            asyncio.run(
-                main.download_card(
-                    object(),
-                    89631139,
-                    "Blue-Eyes White Dragon",
-                    [89631136, 89631139, 89631140],
-                    None,
-                    False,
-                    False,
-                    set(),  # ygoprodeck_art_ids — empty, so speculative kicks in
-                    self.cfg,
-                    stats,
-                    default_art_cache,
-                )
-            )
-
-        # Should have saved the distinct art
-        saved_path = os.path.join(self.cfg.pics_path, "89631139.jpg")
-        self.assertTrue(os.path.exists(saved_path))
-        with open(saved_path, "rb") as f:
-            self.assertEqual(f.read(), distinct_art)
-        self.assertEqual(stats.ok_hd, 1)
-
-    def test_download_card_speculative_discards_duplicate_art(self):
-        """Non-default multi-art ID should discard the image when it matches
-        the default art and fall through to backup."""
-        stats = main.DownloadStats()
-        default_art_cache: dict[int, bytes | None] = {}
         attempted_urls: list[str] = []
-
-        default_art = b"A" * 1024
-
-        # Provide the default art on disk
-        default_path = os.path.join(self.cfg.pics_path, "89631136.jpg")
-        with open(default_path, "wb") as f:
-            f.write(default_art)
-
-        async def fake_try_download_bytes(session, url, timeout, max_retries):
-            return default_art  # same bytes as default — duplicate
+        ygoprodeck_lookup = {
+            89631139: f"{self.cfg.sources['official']}/89631139.jpg",
+        }
 
         async def fake_try_download(session, url, filepath, timeout, max_retries):
             attempted_urls.append(url)
             return True
 
         with mock.patch.object(
-            main,
-            "_try_download_bytes",
-            new=mock.AsyncMock(side_effect=fake_try_download_bytes),
-        ), mock.patch.object(
             main,
             "_try_download",
             new=mock.AsyncMock(side_effect=fake_try_download),
@@ -283,26 +227,26 @@ class DownloadCardTests(unittest.TestCase):
                 main.download_card(
                     object(),
                     89631139,
-                    "Blue-Eyes White Dragon",
+                    "Blue-Eyes White Dragon Alt Art",
                     [89631136, 89631139, 89631140],
                     None,
                     False,
                     False,
-                    set(),  # ygoprodeck_art_ids — empty
+                    ygoprodeck_lookup,
                     self.cfg,
                     stats,
-                    default_art_cache,
                 )
             )
 
-        # Should have discarded the duplicate and fallen through to backup
-        self.assertEqual(len(attempted_urls), 1)
-        self.assertIn("ProjectIgnis", attempted_urls[0])
-        self.assertEqual(stats.ok_fallback, 1)
+        self.assertEqual(attempted_urls, [f"{self.cfg.sources['official']}/89631139.jpg"])
+        self.assertEqual(stats.ok_hd, 1)
 
     def test_download_card_tries_pre_errata_offset_before_backup(self):
         stats = main.DownloadStats()
         attempted_urls: list[str] = []
+        ygoprodeck_lookup = {
+            46986414: f"{self.cfg.sources['official']}/46986414.jpg",
+        }
 
         async def fake_try_download(session, url, filepath, timeout, max_retries):
             attempted_urls.append(url)
@@ -321,24 +265,52 @@ class DownloadCardTests(unittest.TestCase):
                     [46986424],
                     None,
                     True,
-                    False,  # is_suffix_match
-                    set(),  # ygoprodeck_art_ids
+                    False,
+                    ygoprodeck_lookup,
                     self.cfg,
                     stats,
-                    {},     # default_art_cache
                 )
             )
 
-        self.assertEqual(
-            attempted_urls,
-            [
-                f"{self.cfg.sources['official']}/46986424.jpg",
-                f"{self.cfg.sources['official']}/46986414.jpg",
-            ],
-        )
+        self.assertEqual(attempted_urls, [f"{self.cfg.sources['official']}/46986414.jpg"])
         self.assertEqual(stats.ok_hd, 1)
         self.assertEqual(stats.ok_fallback, 0)
         self.assertEqual(stats.failed, 0)
+
+    def test_download_card_uses_manual_map_before_catalog_lookup(self):
+        stats = main.DownloadStats()
+        attempted_urls: list[str] = []
+        ygoprodeck_lookup = {
+            46986414: f"{self.cfg.sources['official']}/46986414.jpg",
+            12345678: f"{self.cfg.sources['official']}/12345678.jpg",
+        }
+
+        async def fake_try_download(session, url, filepath, timeout, max_retries):
+            attempted_urls.append(url)
+            return True
+
+        with mock.patch.object(
+            main,
+            "_try_download",
+            new=mock.AsyncMock(side_effect=fake_try_download),
+        ):
+            asyncio.run(
+                main.download_card(
+                    object(),
+                    46986424,
+                    "Dark Magician (Pre-Errata)",
+                    [46986414],
+                    "12345678",
+                    False,
+                    True,
+                    ygoprodeck_lookup,
+                    self.cfg,
+                    stats,
+                )
+            )
+
+        self.assertEqual(attempted_urls, [f"{self.cfg.sources['official']}/12345678.jpg"])
+        self.assertEqual(stats.ok_mapped, 1)
 
 
 class TrickyCardFixtureTests(unittest.TestCase):
@@ -360,24 +332,36 @@ class TrickyCardFixtureTests(unittest.TestCase):
             74677431,
         )
 
-    def test_should_try_direct_hd_only_for_confirmed_multi_art_ids(self):
-        confirmed_art_ids = set(SAFE_MULTI_ART_FALLBACK_CASE["confirmed_art_ids"])
+    def test_catalog_candidate_builder_only_keeps_confirmed_multi_art_ids(self):
+        lookup = {
+            image_id: f"{DEFAULTS['sources']['official']}/{image_id}.jpg"
+            for image_id in SAFE_MULTI_ART_FALLBACK_CASE["confirmed_art_ids"]
+        }
+        confirmed_id = min(SAFE_MULTI_ART_FALLBACK_CASE["confirmed_art_ids"])
 
-        self.assertFalse(
-            main.should_try_direct_hd(
+        self.assertEqual(
+            main.build_ygoprodeck_download_candidates(
                 SAFE_MULTI_ART_FALLBACK_CASE["card_id"],
                 SAFE_MULTI_ART_FALLBACK_CASE["official_matches"],
+                None,
                 False,
-                set(),
-            )
+                False,
+                lookup,
+                DEFAULTS["sources"]["official"],
+            ),
+            [],
         )
-        self.assertTrue(
-            main.should_try_direct_hd(
-                min(confirmed_art_ids),
+        self.assertEqual(
+            main.build_ygoprodeck_download_candidates(
+                confirmed_id,
                 SAFE_MULTI_ART_FALLBACK_CASE["official_matches"],
+                None,
                 False,
-                confirmed_art_ids,
-            )
+                False,
+                lookup,
+                DEFAULTS["sources"]["official"],
+            ),
+            [("catalog-id", f"{DEFAULTS['sources']['official']}/{confirmed_id}.jpg")],
         )
 
 

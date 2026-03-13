@@ -10,7 +10,8 @@ Helpful notes
 -------------
 - The launcher downloads the latest binary automatically if the macOS app file is missing.
 - Packaged builds refresh artwork automatically, so you do not need to add --force.
-- config.json and alternate-art-cache.json are kept beside the tool files in this folder.
+- config.json is kept beside the tool files in this folder.
+- Each run fetches the current YGOProDeck artwork catalog so alternate arts stay accurate.
 
 Quick sanity check
 ------------------

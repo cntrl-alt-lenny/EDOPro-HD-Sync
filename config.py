@@ -14,8 +14,8 @@ import sys
 
 BUILTIN_MANUAL_MAP: dict[str, str] = {
     # Add card_id → image_id overrides here for cards that can't be auto-matched.
-    # Blue-Eyes alternate arts no longer need entries: the download waterfall now
-    # tries each card's own ID first, so each alt art gets its correct image.
+    # Blue-Eyes alternate arts no longer need entries: the catalog lookup now
+    # only downloads artwork IDs that YGOProDeck explicitly lists.
 }
 
 DEFAULTS = {
@@ -37,7 +37,6 @@ DEFAULTS = {
 }
 
 CONFIG_FILENAME = "config.json"
-ARTWORK_CACHE_FILENAME = "alternate-art-cache.json"
 
 
 def _pick_value(cli_val, file_val, default):
@@ -164,7 +163,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--save-report",
         action="store_true",
-        help="Write a timestamped .txt sync report (includes failed cards) in the EDOPro folder.",
+        help="Write a timestamped .txt sync report (includes failed cards) beside the executable/script.",
     )
     p.add_argument(
         "--no-pause",
@@ -209,9 +208,6 @@ class Config:
         self.pics_path: str = ""
         self.manual_map_file: str = os.path.join(
             os.path.dirname(self.config_path), "manual_map.json"
-        )
-        self.alt_art_cache_file: str = os.path.join(
-            os.path.dirname(self.config_path), ARTWORK_CACHE_FILENAME
         )
         self.set_edopro_path(file_cfg.get("edopro_path", DEFAULTS["edopro_path"]))
 
