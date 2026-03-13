@@ -132,8 +132,8 @@ class DownloadCardTests(unittest.TestCase):
         self.assertEqual(stats.ok_hd, 1)
         self.assertEqual(stats.failed, 0)
 
-    def test_download_card_skips_ygoprodeck_for_multi_art_without_api_match(self):
-        """Multi-art card whose ID is NOT on ygoprodeck should skip to backup."""
+    def test_download_card_prefers_backup_for_multi_art_without_api_match(self):
+        """Multi-art card whose ID is NOT on ygoprodeck should try backup first."""
         stats = main.DownloadStats()
         attempted_urls: list[str] = []
 
@@ -163,11 +163,49 @@ class DownloadCardTests(unittest.TestCase):
                 )
             )
 
-        # Should skip own ID (not on ygoprodeck) and skip name-matched
-        # alternatives (multi-art), going straight to backup.
+        # Should skip own ID (not on ygoprodeck), skip name-matched
+        # alternatives (multi-art), and go to ProjectIgnis backup first.
         self.assertEqual(len(attempted_urls), 1)
         self.assertIn("ProjectIgnis", attempted_urls[0])
         self.assertEqual(stats.ok_fallback, 1)
+
+    def test_download_card_uses_sibling_art_as_last_resort(self):
+        """If backup also fails, multi-art card should try a sibling's HD art."""
+        stats = main.DownloadStats()
+        attempted_urls: list[str] = []
+
+        async def fake_try_download(session, url, filepath, timeout, max_retries):
+            attempted_urls.append(url)
+            # ProjectIgnis fails, but ygoprodeck sibling succeeds
+            return "ygoprodeck" in url
+
+        ygoprodeck_art_ids = {89631139, 89631140}
+
+        with mock.patch.object(
+            main,
+            "_try_download",
+            new=mock.AsyncMock(side_effect=fake_try_download),
+        ):
+            asyncio.run(
+                main.download_card(
+                    object(),
+                    89631136,
+                    "Blue-Eyes White Dragon",
+                    [89631136, 89631139, 89631140],
+                    None,
+                    False,
+                    False,
+                    ygoprodeck_art_ids,
+                    self.cfg,
+                    stats,
+                )
+            )
+
+        # Should try backup first (fails), then fall back to sibling HD art.
+        self.assertEqual(len(attempted_urls), 2)
+        self.assertIn("ProjectIgnis", attempted_urls[0])
+        self.assertIn("89631139", attempted_urls[1])
+        self.assertEqual(stats.ok_hd, 1)
 
     def test_download_card_tries_pre_errata_offset_before_backup(self):
         stats = main.DownloadStats()

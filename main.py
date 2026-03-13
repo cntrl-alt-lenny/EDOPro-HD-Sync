@@ -85,7 +85,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "4.0.1"
+VERSION = "4.0.2"
 
 
 def format_duration(seconds: float) -> str:
@@ -611,8 +611,8 @@ async def download_card(
                 return
 
     # Name-matched alternatives — used by GOAT / Pre-Errata cards whose
-    # custom DB ID doesn't exist on YGOProDeck.  Skipped for multi-art cards
-    # because trying a sibling's ID would download the wrong artwork.
+    # custom DB ID doesn't exist on YGOProDeck.  Deferred for multi-art
+    # cards until after the ProjectIgnis backup (see below).
     if not is_multi_art:
         for official_match in official_matches:
             if official_match == card_id:
@@ -639,6 +639,20 @@ async def download_card(
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
+
+    # Last resort for multi-art cards: if ProjectIgnis didn't have the image
+    # either, try a sibling's HD artwork from YGOProDeck.  The variant may
+    # not be exact, but some image is better than none.
+    if is_multi_art and ygoprodeck_art_ids:
+        for art_id in sorted(ygoprodeck_art_ids & set(official_matches)):
+            if art_id == card_id:
+                continue
+            url = f"{cfg.sources['official']}/{art_id}.jpg"
+            if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+                stats.record_success(card_id, "ok_hd")
+                if progress and task_id is not None:
+                    progress.advance(task_id)
+                return
 
     stats.record_failure(card_id, name)
     if progress and task_id is not None:
