@@ -23,7 +23,7 @@ with urllib.request.urlopen(api_url, timeout=20) as response:
 
 for asset in data.get("assets", []):
     name = asset.get("name", "")
-    if name.startswith("EDOPro HD Sync - MacOS Version (") and name.endswith(".zip"):
+    if name.startswith("EDOPro HD Sync - MacOS Version ") and name.endswith(".zip"):
         print(asset["browser_download_url"])
         break
 PY

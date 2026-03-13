@@ -8,11 +8,15 @@ The owner is a non-programmer. Keep explanations plain and avoid jargon. Prefer 
 **After committing and pushing any change, always offer to push a version tag so a new release is built automatically.** The owner will not know to do this themselves. Suggest the next patch/minor version based on what changed.
 
 **Release packaging requirements must be preserved.** Keep the platform bundle names in this format:
-- `EDOPro HD Sync - Windows Version (VERSION).zip`
-- `EDOPro HD Sync - MacOS Version (VERSION).zip`
-- `EDOPro HD Sync - Linux Version (VERSION).zip`
+- `EDOPro HD Sync - Windows Version VERSION.zip`
+- `EDOPro HD Sync - MacOS Version VERSION.zip`
+- `EDOPro HD Sync - Linux Version VERSION.zip`
 
 Each platform bundle must include a platform-specific `ReadMe.txt`, and macOS/Windows should stay on `.zip` rather than `.7z` because native unzip support is better for non-technical users.
+
+`alternate-art-cache.json` is a runtime memory file, not a user settings file. It stores which alternate-art IDs YGOProDeck confirmed as safe so the downloader can avoid wrong default art on future runs.
+
+When users compare official failure counts between versions, remember that a lower number is usually good, but many remaining "official" misses are expected tokens, placeholders, or alternate-art IDs that the tool now skips on purpose because downloading them would produce the wrong image.
 
 ## Running / developing locally
 ```bash
@@ -74,9 +78,9 @@ git tag v3.x.x && git push origin v3.x.x
 ```
 
 The CI matrix builds:
-- `EDOPro HD Sync - Windows Version (VERSION).zip`
-- `EDOPro HD Sync - MacOS Version (VERSION).zip`
-- `EDOPro HD Sync - Linux Version (VERSION).zip`
+- `EDOPro HD Sync - Windows Version VERSION.zip`
+- `EDOPro HD Sync - MacOS Version VERSION.zip`
+- `EDOPro HD Sync - Linux Version VERSION.zip`
 
 Each bundle includes a platform-specific `ReadMe.txt`. The workflow also smoke-tests the packaged binary with `--health-check` before the release asset is published.
 
