@@ -23,6 +23,7 @@ class SyncReportingTests(unittest.TestCase):
             "quiet": False,
             "edopro_path": self.edopro_path,
             "pics_path": self.pics_path,
+            "config_path": os.path.join(self.edopro_path, "config.json"),
             "save_report": False,
         }
         values.update(overrides)

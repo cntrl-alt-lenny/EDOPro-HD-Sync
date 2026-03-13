@@ -195,7 +195,9 @@ class Config:
 
         self.edopro_path: str = ""
         self.pics_path: str = ""
-        self.manual_map_file: str = ""
+        self.manual_map_file: str = os.path.join(
+            os.path.dirname(self.config_path), "manual_map.json"
+        )
         self.set_edopro_path(file_cfg.get("edopro_path", DEFAULTS["edopro_path"]))
 
         self.concurrency: int = _pick_value(
@@ -246,7 +248,6 @@ class Config:
         normalized_path = os.path.abspath(os.path.expanduser(edopro_path))
         self.edopro_path = normalized_path
         self.pics_path = os.path.join(self.edopro_path, "pics")
-        self.manual_map_file = os.path.join(self.edopro_path, "manual_map.json")
         if save:
             return save_edopro_path(self.config_path, self.edopro_path)
         return True

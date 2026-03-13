@@ -627,7 +627,7 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config, runtime
     if cfg.save_report and not cfg.dry_run:
         now = datetime.now()
         timestamp = now.strftime("%Y%m%d-%H%M%S")
-        report_path = os.path.join(cfg.edopro_path, f"sync-report-{timestamp}.txt")
+        report_path = os.path.join(os.path.dirname(cfg.config_path), f"sync-report-{timestamp}.txt")
         try:
             with open(report_path, "w", encoding="utf-8") as file_obj:
                 file_obj.write("EDOPro HD Sync Report\n")
