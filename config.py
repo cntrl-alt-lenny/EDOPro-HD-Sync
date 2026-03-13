@@ -17,7 +17,7 @@ DEFAULTS = {
     "concurrency": 50,
     "max_retries": 3,
     "timeout": 30,
-    "save_failures": False,
+    "save_report": False,
     "sources": {
         "official": "https://images.ygoprodeck.com/images/cards",
         "backup": "https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics",
@@ -157,13 +157,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--save-report",
         action="store_true",
-        help="Write a timestamped .txt sync report in the EDOPro folder.",
-    )
-    p.add_argument(
-        "--save-failures",
-        action="store_true",
-        default=None,
-        help="Write a timestamped .txt file of cards that still failed to sync.",
+        help="Write a timestamped .txt sync report (includes failed cards) in the EDOPro folder.",
     )
     p.add_argument(
         "--no-pause",
@@ -236,15 +230,14 @@ class Config:
         self.force: bool = self.cli.force
         self.dry_run: bool = self.cli.dry_run
         self.quiet: bool = self.cli.quiet
-        self.save_report: bool = self.cli.save_report
-        self.save_failures: bool = _ensure_bool(
-            "save_failures",
+        self.save_report: bool = _ensure_bool(
+            "save_report",
             _pick_value(
-                self.cli.save_failures,
-                file_cfg.get("save_failures"),
-                DEFAULTS["save_failures"],
+                self.cli.save_report or None,
+                file_cfg.get("save_report"),
+                DEFAULTS["save_report"],
             ),
-            DEFAULTS["save_failures"],
+            DEFAULTS["save_report"],
         )
         self.no_pause: bool = self.cli.no_pause
 

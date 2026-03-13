@@ -121,12 +121,11 @@ class StartupPromptTests(unittest.TestCase):
         config_path = self.write_config({})
         cfg = Config(["--config", config_path])
 
-        with mock.patch("builtins.input", side_effect=["2", "y", "y"]):
+        with mock.patch("builtins.input", side_effect=["2", "y"]):
             main.prompt_startup_menu(cfg)
 
         self.assertTrue(cfg.force)
         self.assertTrue(cfg.save_report)
-        self.assertTrue(cfg.save_failures)
 
     def test_run_skips_startup_menu_when_cli_flags_are_passed(self):
         config_path = self.write_config({})

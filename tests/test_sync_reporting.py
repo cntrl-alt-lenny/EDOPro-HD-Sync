@@ -24,7 +24,6 @@ class SyncReportingTests(unittest.TestCase):
             "edopro_path": self.edopro_path,
             "pics_path": self.pics_path,
             "save_report": False,
-            "save_failures": False,
         }
         values.update(overrides)
         return SimpleNamespace(**values)
@@ -73,12 +72,12 @@ class SyncReportingTests(unittest.TestCase):
             os.path.exists(os.path.join(self.edopro_path, "Sync-Failed-20260312-140506.txt"))
         )
 
-    def test_print_summary_writes_timestamped_failure_file_and_report(self):
+    def test_print_summary_writes_combined_report(self):
         stats = main.DownloadStats()
         stats.record_success(12345678, "ok_hd")
         stats.record_success(100000001, "ok_fallback")
         stats.record_failure(100000002, "Fan Card")
-        cfg = self.make_cfg(save_report=True, save_failures=True, quiet=True)
+        cfg = self.make_cfg(save_report=True, quiet=True)
         fixed_now = datetime(2026, 3, 12, 14, 5, 6)
 
         with mock.patch.object(main, "RICH_AVAILABLE", True), mock.patch.object(
@@ -87,19 +86,12 @@ class SyncReportingTests(unittest.TestCase):
             datetime_mock.now.return_value = fixed_now
             main.print_summary(stats, 3, cfg, 12.0)
 
-        failure_path = os.path.join(self.edopro_path, "Sync-Failed-20260312-140506.txt")
         report_path = os.path.join(self.edopro_path, "sync-report-20260312-140506.txt")
-
-        self.assertTrue(os.path.exists(failure_path))
         self.assertTrue(os.path.exists(report_path))
 
-        with open(failure_path, "r", encoding="utf-8") as file_obj:
-            failure_contents = file_obj.read()
         with open(report_path, "r", encoding="utf-8") as file_obj:
             report_contents = file_obj.read()
 
-        self.assertIn("Full details also in the sync report.", failure_contents)
-        self.assertIn("100000002\tFan Card", failure_contents)
         self.assertIn("- Downloaded: 2", report_contents)
         self.assertIn("- Unavailable (unofficial): 1", report_contents)
         self.assertIn("- Unavailable (other): 0", report_contents)

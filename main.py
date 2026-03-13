@@ -624,65 +624,42 @@ def print_summary(stats: DownloadStats, total_missing: int, cfg: Config, runtime
         print(f"  {'Images folder':<{label_width}} {os.path.abspath(cfg.pics_path)}")
         print(sep)
 
-    now = None
-    timestamp = None
-    if cfg.save_report or (cfg.save_failures and stats.failed_cards and not cfg.dry_run):
+    if cfg.save_report and not cfg.dry_run:
         now = datetime.now()
         timestamp = now.strftime("%Y%m%d-%H%M%S")
-
-    if cfg.save_failures and stats.failed_cards and not cfg.dry_run:
-        log_path = os.path.join(cfg.edopro_path, f"Sync-Failed-{timestamp}.txt")
-        try:
-            with open(log_path, "w", encoding="utf-8") as file_obj:
-                file_obj.write(
-                    f"EDOPro HD Sync - cards with no artwork found ({len(stats.failed_cards)} total)\n"
-                )
-                if cfg.save_report:
-                    file_obj.write("Full details also in the sync report.\n")
-                file_obj.write(
-                    "These are usually custom or fan-made cards with no official artwork source.\n"
-                )
-                file_obj.write("-" * 60 + "\n")
-                for card_id, card_name in stats.failed_cards:
-                    file_obj.write(f"{card_id}\t{card_name}\n")
-            console.print(
-                f"[dim]Failed card list saved to: {log_path}[/dim]"
-                if RICH_AVAILABLE
-                else f"Failed card list saved to: {log_path}"
-            )
-        except OSError:
-            pass
-
-    if cfg.save_report:
-        report_path = os.path.join(
-            cfg.edopro_path,
-            f"sync-report-{timestamp}.txt",
-        )
+        report_path = os.path.join(cfg.edopro_path, f"sync-report-{timestamp}.txt")
         try:
             with open(report_path, "w", encoding="utf-8") as file_obj:
                 file_obj.write("EDOPro HD Sync Report\n")
                 file_obj.write("=" * 40 + "\n")
                 file_obj.write(f"Generated: {now.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                file_obj.write(f"Mode: {'Dry run (preview only)' if cfg.dry_run else 'Download'}\n")
                 file_obj.write(f"Runtime: {format_duration(runtime_seconds)}\n")
                 file_obj.write("\nSummary\n")
                 for label, value, _ in summary_rows:
                     file_obj.write(f"- {label}: {value}\n")
                 file_obj.write(f"- Images folder: {os.path.abspath(cfg.pics_path)}\n")
                 if stats.failed_cards:
-                    file_obj.write("\nFailed cards\n")
+                    file_obj.write(
+                        f"\nCards with no artwork found ({len(stats.failed_cards)} total)\n"
+                    )
+                    file_obj.write(
+                        "These are usually custom or fan-made cards with no official artwork source.\n"
+                    )
+                    file_obj.write("-" * 60 + "\n")
                     for card_id, card_name in stats.failed_cards:
                         file_obj.write(f"{card_id}\t{card_name}\n")
+                else:
+                    file_obj.write("\nAll cards downloaded successfully.\n")
             console.print(
-                f"[dim]Summary report saved to: {report_path}[/dim]"
+                f"[dim]Sync report saved to: {report_path}[/dim]"
                 if RICH_AVAILABLE
-                else f"Summary report saved to: {report_path}"
+                else f"Sync report saved to: {report_path}"
             )
         except OSError as exc:
             console.print(
-                f"[yellow]Could not write summary report: {exc}[/yellow]"
+                f"[yellow]Could not write sync report: {exc}[/yellow]"
                 if RICH_AVAILABLE
-                else f"Could not write summary report: {exc}"
+                else f"Could not write sync report: {exc}"
             )
 
 
@@ -714,7 +691,6 @@ def should_show_startup_menu(cfg: Config) -> bool:
             "--force",
             "--dry-run",
             "--save-report",
-            "--save-failures",
         )
     )
 
@@ -732,11 +708,9 @@ def prompt_startup_menu(cfg: Config) -> None:
     console.print()
 
     cfg.force = choice == "2"
-    cfg.save_report = _prompt_yes_no("Save a timestamped sync report?", default=cfg.save_report)
-    console.print()
-    cfg.save_failures = _prompt_yes_no(
-        "Save a timestamped failed-card list?",
-        default=cfg.save_failures,
+    cfg.save_report = _prompt_yes_no(
+        "Save a sync report? (includes summary + any failed cards)",
+        default=cfg.save_report,
     )
     console.print()
 

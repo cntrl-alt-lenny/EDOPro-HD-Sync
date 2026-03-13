@@ -15,6 +15,11 @@ AppDir/
 .DS_Store
 New Claude Files/
 
+# Generated output files (personal to each user's run)
+config.json
+sync-report-*.txt
+Sync-Failed-*.txt
+
 # EDOPro Game Files (IMPORTANT: Ignore these so they don't go to GitHub)
 pics/
 *.cdb

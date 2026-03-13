@@ -75,19 +75,19 @@ class ConfigPathTests(unittest.TestCase):
             saved_config = json.load(file_obj)
         self.assertEqual(saved_config["edopro_path"], os.path.abspath(edopro_path))
 
-    def test_save_failures_can_be_loaded_from_config_file(self):
+    def test_save_report_can_be_loaded_from_config_file(self):
         config_path = os.path.join(self.test_root, "config.json")
         with open(config_path, "w", encoding="utf-8") as file_obj:
-            json.dump({"save_failures": True}, file_obj)
+            json.dump({"save_report": True}, file_obj)
 
         cfg = Config(["--config", config_path])
 
-        self.assertTrue(cfg.save_failures)
+        self.assertTrue(cfg.save_report)
 
-    def test_save_failures_can_be_enabled_from_cli(self):
-        cfg = Config(["--config", os.path.join(self.test_root, "config.json"), "--save-failures"])
+    def test_save_report_can_be_enabled_from_cli(self):
+        cfg = Config(["--config", os.path.join(self.test_root, "config.json"), "--save-report"])
 
-        self.assertTrue(cfg.save_failures)
+        self.assertTrue(cfg.save_report)
 
 
 if __name__ == "__main__":
