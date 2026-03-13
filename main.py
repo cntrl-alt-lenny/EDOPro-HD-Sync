@@ -91,7 +91,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "4.1.0"
+VERSION = "4.1.1"
 ARTWORK_CACHE_VERSION = 1
 ARTWORK_CACHE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 
