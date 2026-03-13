@@ -13,7 +13,7 @@ import os
 import sys
 
 BUILTIN_MANUAL_MAP: dict[str, str] = {
-    # Add card_id → image_id overrides here for cards that can't be auto-matched.
+    # Add card_id -> image_id overrides here for cards that can't be auto-matched.
     # Blue-Eyes alternate arts no longer need entries: the catalog lookup now
     # only downloads artwork IDs that YGOProDeck explicitly lists.
 }
@@ -109,6 +109,30 @@ def save_edopro_path(path: str, edopro_path: str) -> bool:
         print(f"Warning: Could not write {path}: {exc}")
         return False
     return True
+
+
+def _looks_like_edopro_folder(path: str) -> bool:
+    """Return True when a folder appears to be an EDOPro installation."""
+    if not path or not os.path.isdir(path):
+        return False
+    return any(
+        (
+            os.path.isfile(os.path.join(path, "EDOPro.exe")),
+            os.path.isfile(os.path.join(path, "cards.cdb")),
+            os.path.isdir(os.path.join(path, "expansions")),
+            os.path.isdir(os.path.join(path, "repositories")),
+        )
+    )
+
+
+def _detect_packaged_edopro_path(config_path: str) -> str | None:
+    """Guess the EDOPro folder for packaged builds living inside the game folder."""
+    tool_dir = os.path.dirname(os.path.abspath(config_path))
+    candidates = [tool_dir, os.path.dirname(tool_dir)]
+    for candidate in candidates:
+        if _looks_like_edopro_folder(candidate):
+            return candidate
+    return None
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -209,7 +233,14 @@ class Config:
         self.manual_map_file: str = os.path.join(
             os.path.dirname(self.config_path), "manual_map.json"
         )
-        self.set_edopro_path(file_cfg.get("edopro_path", DEFAULTS["edopro_path"]))
+        detected_edopro_path = (
+            _detect_packaged_edopro_path(self.config_path)
+            if getattr(sys, "frozen", False) and file_cfg.get("edopro_path") is None
+            else None
+        )
+        self.set_edopro_path(
+            file_cfg.get("edopro_path", detected_edopro_path or DEFAULTS["edopro_path"])
+        )
 
         self.concurrency: int = _pick_value(
             self.cli.concurrency, file_cfg.get("concurrency"), DEFAULTS["concurrency"]

@@ -68,7 +68,10 @@ class CatalogLookupTests(unittest.TestCase):
 
         self.assertEqual(
             candidates,
-            [("name-match", f"{self.official_source}/46986414.jpg")],
+            [
+                ("catalog-id", f"{self.official_source}/46986424.jpg"),
+                ("name-match", f"{self.official_source}/46986414.jpg"),
+            ],
         )
 
     def test_build_ygoprodeck_download_candidates_uses_pre_errata_offset_when_needed(self):
@@ -84,7 +87,10 @@ class CatalogLookupTests(unittest.TestCase):
 
         self.assertEqual(
             candidates,
-            [("pre-errata-offset", f"{self.official_source}/70781052.jpg")],
+            [
+                ("catalog-id", f"{self.official_source}/70781062.jpg"),
+                ("pre-errata-offset", f"{self.official_source}/70781052.jpg"),
+            ],
         )
 
 

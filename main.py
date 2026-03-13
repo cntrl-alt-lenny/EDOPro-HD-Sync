@@ -90,7 +90,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "4.3.0"
+VERSION = "4.3.1"
 YGOPRODECK_API_URL = "https://db.ygoprodeck.com/api/v7/cardinfo.php"
 YGOPRODECK_CATALOG_TIMEOUT_SECONDS = 120
 
@@ -207,6 +207,7 @@ def build_ygoprodeck_download_candidates(
     """Build the ordered list of exact YGOProDeck downloads worth trying."""
     candidates: list[tuple[str, str]] = []
     seen_ids: set[int] = set()
+    is_multi_art = is_multi_art_card(card_id, official_matches, is_suffix_match)
 
     def add_candidate(image_id: int | None, reason: str, allow_constructed: bool = False) -> None:
         if image_id is None or image_id in seen_ids:
@@ -220,16 +221,24 @@ def build_ygoprodeck_download_candidates(
         seen_ids.add(image_id)
 
     add_candidate(_parse_image_id(manual_match), "manual-map", allow_constructed=True)
-    add_candidate(card_id, "catalog-id")
+    add_candidate(
+        card_id,
+        "catalog-id",
+        allow_constructed=(card_id < 100_000_000 and not is_multi_art),
+    )
 
-    if not is_multi_art_card(card_id, official_matches, is_suffix_match):
+    if not is_multi_art:
         for official_match in official_matches:
             if official_match == card_id:
                 continue
-            add_candidate(official_match, "name-match")
+            add_candidate(
+                official_match,
+                "name-match",
+                allow_constructed=(official_match < 100_000_000),
+            )
 
     if is_pre_errata_miss and card_id >= 10:
-        add_candidate(card_id - 10, "pre-errata-offset")
+        add_candidate(card_id - 10, "pre-errata-offset", allow_constructed=True)
 
     return candidates
 
@@ -630,6 +639,32 @@ async def _try_download(
     return False
 
 
+async def _try_download_bytes(
+    session: aiohttp.ClientSession,
+    url: str,
+    timeout: aiohttp.ClientTimeout,
+    max_retries: int,
+) -> bytes | None:
+    """Like _try_download but returns raw bytes without writing to disk."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with session.get(url, timeout=timeout) as resp:
+                if resp.status == 200:
+                    content = await resp.read()
+                    if len(content) < 512:
+                        if attempt >= max_retries:
+                            return None
+                    else:
+                        return content
+                elif resp.status == 404:
+                    return None
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            pass
+        if attempt < max_retries:
+            await asyncio.sleep(2 ** (attempt - 1))
+    return None
+
+
 async def download_card(
     session: aiohttp.ClientSession,
     card_id: int,
@@ -641,10 +676,11 @@ async def download_card(
     ygoprodeck_lookup: dict[int, str],
     cfg: Config,
     stats: DownloadStats,
+    default_art_cache: dict[int, bytes | None],
     progress=None,
     task_id=None,
 ) -> None:
-    """Download a single card image using exact catalog matches first."""
+    """Download a single card image using a catalog-first hybrid fallback."""
     filepath = os.path.join(cfg.pics_path, f"{card_id}.jpg")
 
     if not cfg.force and os.path.exists(filepath):
@@ -663,8 +699,21 @@ async def download_card(
         cfg.sources["official"],
     )
 
+    is_multi_art = is_multi_art_card(card_id, official_matches, is_suffix_match)
+    needs_speculative_probe = (
+        is_multi_art
+        and card_id not in ygoprodeck_lookup
+        and official_matches
+        and card_id != min(official_matches)
+    )
+
     if cfg.dry_run:
-        tag = candidates[0][0] if candidates else "fallback"
+        if candidates:
+            tag = candidates[0][0]
+        elif needs_speculative_probe:
+            tag = "speculative-hd"
+        else:
+            tag = "fallback"
         console.print(
             f"  [dim]Would download:[/dim] {name} ({card_id}) [{tag}]"
             if RICH_AVAILABLE
@@ -682,6 +731,39 @@ async def download_card(
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
+
+    # YGOProDeck's catalog is safer than guessing, but it is not complete.
+    # For direct-name multi-art cards missing from the catalog, probe the card's
+    # own exact ID and keep it only when it differs from the default art.
+    if needs_speculative_probe:
+        url = f"{cfg.sources['official']}/{card_id}.jpg"
+        candidate = await _try_download_bytes(session, url, timeout, cfg.max_retries)
+        if candidate is not None:
+            default_id = min(official_matches)
+            if default_id in default_art_cache:
+                default_bytes = default_art_cache[default_id]
+            else:
+                default_path = os.path.join(cfg.pics_path, f"{default_id}.jpg")
+                if os.path.exists(default_path):
+                    with open(default_path, "rb") as f:
+                        default_bytes = f.read()
+                else:
+                    default_url = ygoprodeck_lookup.get(
+                        default_id,
+                        f"{cfg.sources['official']}/{default_id}.jpg",
+                    )
+                    default_bytes = await _try_download_bytes(
+                        session, default_url, timeout, cfg.max_retries,
+                    )
+                default_art_cache[default_id] = default_bytes
+
+            if default_bytes is None or candidate != default_bytes:
+                with open(filepath, "wb") as file_obj:
+                    file_obj.write(candidate)
+                stats.record_success(card_id, "ok_hd")
+                if progress and task_id is not None:
+                    progress.advance(task_id)
+                return
 
     if "backup" in cfg.sources:
         url = f"{cfg.sources['backup']}/{card_id}.jpg"
@@ -1049,6 +1131,8 @@ async def run(cfg: Config):
                 )
             )
 
+        default_art_cache: dict[int, bytes | None] = {}
+
         def make_worker(progress=None, task_id=None):
             async def worker():
                 while True:
@@ -1069,6 +1153,7 @@ async def run(cfg: Config):
                         ygoprodeck_lookup,
                         cfg,
                         stats,
+                        default_art_cache,
                         progress,
                         task_id,
                     )

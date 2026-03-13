@@ -99,6 +99,20 @@ class ConfigPathTests(unittest.TestCase):
             os.path.join(self.test_root, "nested", "manual_map.json"),
         )
 
+    def test_packaged_build_defaults_to_parent_edopro_folder_when_no_config_exists(self):
+        edopro_root = os.path.join(self.test_root, "ProjectIgnis")
+        tool_dir = os.path.join(edopro_root, "EDOPro HD Sync Windows")
+        os.makedirs(tool_dir, exist_ok=True)
+        open(os.path.join(edopro_root, "EDOPro.exe"), "wb").close()
+        fake_executable = os.path.join(tool_dir, "EDOPro-HD-Sync.exe")
+
+        with mock.patch.object(config_module.sys, "executable", fake_executable), mock.patch.object(
+            config_module.sys, "frozen", True, create=True
+        ):
+            cfg = Config([])
+
+        self.assertEqual(cfg.edopro_path, os.path.abspath(edopro_root))
+
     def test_health_check_can_be_enabled_from_cli(self):
         cfg = Config(["--config", os.path.join(self.test_root, "config.json"), "--health-check"])
 
