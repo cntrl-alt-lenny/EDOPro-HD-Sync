@@ -128,7 +128,7 @@ jobs:
       run: |
         $version = "${{ steps.release_version.outputs.value }}"
         $bundleDir = "dist/EDOPro HD Sync Windows"
-        $archive = "dist/EDOPro HD Sync - Windows Version $version.zip"
+        $archive = "dist/EDOPro-HD-Sync-Windows-v$version.zip"
         if (Test-Path $bundleDir) {
           Remove-Item $bundleDir -Recurse -Force
         }
@@ -145,7 +145,7 @@ jobs:
       shell: bash
       run: |
         version="${{ steps.release_version.outputs.value }}"
-        archive="EDOPro HD Sync - MacOS Version ${version}.zip"
+        archive="EDOPro-HD-Sync-macOS-v${version}.zip"
         mv dist/EDOPro-HD-Sync dist/EDOPro-HD-Sync-macOS
         chmod +x dist/EDOPro-HD-Sync-macOS
         chmod +x EDOPro-HD-Sync.command
@@ -160,7 +160,7 @@ jobs:
       shell: bash
       run: |
         version="${{ steps.release_version.outputs.value }}"
-        archive="EDOPro HD Sync - Linux Version ${version}.zip"
+        archive="EDOPro-HD-Sync-Linux-v${version}.zip"
         wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
         chmod +x appimagetool
 
@@ -200,11 +200,11 @@ jobs:
       run: |
         version="${{ steps.release_version.outputs.value }}"
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          echo "path=dist/EDOPro HD Sync - Windows Version ${version}.zip" >> "$GITHUB_OUTPUT"
+          echo "path=dist/EDOPro-HD-Sync-Windows-v${version}.zip" >> "$GITHUB_OUTPUT"
         elif [ "${{ matrix.os }}" = "macos-latest" ]; then
-          echo "path=dist/EDOPro HD Sync - MacOS Version ${version}.zip" >> "$GITHUB_OUTPUT"
+          echo "path=dist/EDOPro-HD-Sync-macOS-v${version}.zip" >> "$GITHUB_OUTPUT"
         else
-          echo "path=dist/EDOPro HD Sync - Linux Version ${version}.zip" >> "$GITHUB_OUTPUT"
+          echo "path=dist/EDOPro-HD-Sync-Linux-v${version}.zip" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Release

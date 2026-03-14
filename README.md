@@ -28,7 +28,7 @@
 
 ### Windows
 
-1. Download `EDOPro HD Sync - Windows Version VERSION.zip` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
+1. Download `EDOPro-HD-Sync-Windows-vVERSION.zip` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
 2. Extract the zip and open the `EDOPro HD Sync Windows` folder
 3. Run `EDOPro-HD-Sync.exe`
 4. Pick your EDOPro folder when prompted
@@ -36,7 +36,7 @@
 
 ### macOS
 
-1. Download `EDOPro HD Sync - MacOS Version VERSION.zip` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
+1. Download `EDOPro-HD-Sync-macOS-vVERSION.zip` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
 2. Unzip into your EDOPro folder and open the `EDOPro HD Sync MacOS` folder
 3. Double-click `EDOPro-HD-Sync.command`
 4. If macOS asks about security, go to **System Settings -> Privacy & Security** and allow it
@@ -44,7 +44,7 @@
 
 ### Linux
 
-1. Download `EDOPro HD Sync - Linux Version VERSION.zip` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
+1. Download `EDOPro-HD-Sync-Linux-vVERSION.zip` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
 2. Extract it and open the `EDOPro HD Sync Linux` folder
 3. Make the AppImage executable: `chmod +x EDOPro-HD-Sync-Linux.AppImage`
 4. Run it from your EDOPro folder, or let it prompt you to choose the folder:
