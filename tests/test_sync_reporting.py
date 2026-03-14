@@ -95,7 +95,7 @@ class SyncReportingTests(unittest.TestCase):
             report_contents = file_obj.read()
 
         self.assertIn("Downloaded:      3", report_contents)
-        self.assertIn("Correct backup art: 1", report_contents)
+        self.assertIn("Backup art:      1", report_contents)
         self.assertIn("Unavailable:     2", report_contents)
         self.assertIn("Rush Duel cards:", report_contents)
         self.assertIn("Anime / fan-made:", report_contents)
@@ -107,7 +107,7 @@ class SyncReportingTests(unittest.TestCase):
 
         rows = main._build_summary_rows(stats, cfg, 5.0)
 
-        self.assertIn(("Correct backup art", "1", "cyan"), rows)
+        self.assertIn(("Backup art", "1", "cyan"), rows)
 
 
 if __name__ == "__main__":

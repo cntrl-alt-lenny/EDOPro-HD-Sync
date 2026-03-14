@@ -10,7 +10,7 @@ Helpful notes
 -------------
 - Packaged builds refresh artwork automatically, so you do not need to add --force.
 - The tool remembers your chosen EDOPro folder in config.json beside the exe.
-- Each run fetches the current YGOProDeck artwork catalog so alternate arts stay accurate.
+- The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
 - If Windows warns about the app, click "More info" and then "Run anyway" unless your release notes say the build is signed.
 
 Quick sanity check
@@ -19,4 +19,4 @@ You can open Command Prompt in this folder and run:
 
 EDOPro-HD-Sync.exe --health-check
 
-That runs a quick offline check for the known tricky alternate-art cases.
+That runs a quick offline check to verify the tool is working correctly.

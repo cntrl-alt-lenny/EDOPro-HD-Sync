@@ -14,8 +14,6 @@ The owner is a non-programmer. Keep explanations plain and avoid jargon. Prefer 
 
 Each platform bundle must include a platform-specific `ReadMe.txt`, and macOS/Windows should stay on `.zip` rather than `.7z` because native unzip support is better for non-technical users.
 
-When users compare official failure counts between versions, remember that a lower number is usually good, but many remaining "official" misses are expected tokens, placeholders, or alternate-art IDs that the tool now skips on purpose because downloading them would produce the wrong image.
-
 ## Running / developing locally
 ```bash
 pip install -r requirements.txt
@@ -49,17 +47,17 @@ From these it builds two maps:
 
 ### Download waterfall (in order, stops at first success)
 1. **Manual override** - `manual_map.json` lets users pin specific card IDs.
-2. **Exact ID from the YGOProDeck catalog** - at startup the tool downloads the full `cardinfo.php` catalog once and builds an exact `card_id -> image_url` lookup from `card_images`.
-3. **Name-matched HD** - strips GOAT/Pre-Errata suffixes, then tries matching official IDs that the catalog explicitly lists. Skipped for direct-name multi-art cards because a different artwork ID would be wrong art.
-4. **Pre-Errata offset fallback** - if a Pre-Errata suffix matched but the base card was missing from the scanned DBs, try `card_id - 10` only if that exact ID exists in the catalog.
+2. **Direct ID on YGOProDeck** - tries `https://images.ygoprodeck.com/images/cards/{card_id}.jpg`. Skipped for unofficial IDs (>= 100M) since YGOProDeck won't have them.
+3. **Name-matched HD** - for GOAT/Pre-Errata suffix cards only. Strips the suffix, finds the base card's official IDs, and tries those on YGOProDeck.
+4. **Pre-Errata offset fallback** - if a Pre-Errata suffix matched but the base card was missing from the scanned DBs, try `card_id - 10` on YGOProDeck.
 5. **ProjectIgnis backup** - `https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics/{id}.jpg`
 
 ### Card ID rules
-- IDs < 100,000,000 -> official Konami cards
-- IDs >= 100,000,000 -> custom/fan/unofficial cards
+- IDs < 100,000,000 -> official Konami cards (try YGOProDeck first)
+- IDs >= 100,000,000 -> custom/fan/unofficial cards (skip YGOProDeck, go straight to ProjectIgnis)
 
 ### GOAT / Pre-Errata trick
-Cards like "Dark Magician GOAT" have a custom DB ID but the same artwork as "Dark Magician". The suffix-stripping logic removes known suffixes (` GOAT`, ` (Pre-Errata)`, etc.) and looks up the base name in `name_to_official` to find the real Konami ID, then downloads that HD image only if the YGOProDeck catalog explicitly lists that artwork ID. If a Pre-Errata card's base name is missing from the scanned DBs, its GOAT DB ID is usually the real passcode + 10, so the downloader gets one last exact-catalog try with `card_id - 10` before falling back to ProjectIgnis.
+Cards like "Dark Magician GOAT" have a custom DB ID but the same artwork as "Dark Magician". The suffix-stripping logic removes known suffixes (` GOAT`, ` (Pre-Errata)`, etc.) and looks up the base name in `name_to_official` to find the real Konami ID, then downloads that HD image. If a Pre-Errata card's base name is missing from the scanned DBs, its GOAT DB ID is usually the real passcode + 10, so the downloader tries `card_id - 10` before falling back to ProjectIgnis.
 
 ### Concurrency
 50 async workers drain a shared `asyncio.Queue`. Each worker loops until the queue is empty. This keeps a steady number of requests in flight without spawning tens of thousands of coroutines.
@@ -71,7 +69,7 @@ PyInstaller bundles do not include system SSL certs automatically. The app uses 
 Push a version tag -> GitHub Actions builds 3 binaries -> attached to a GitHub Release automatically.
 
 ```bash
-git tag v3.x.x && git push origin v3.x.x
+git tag v4.x.x && git push origin v4.x.x
 ```
 
 The CI matrix builds:
@@ -94,4 +92,4 @@ Each bundle includes a platform-specific `ReadMe.txt`. The workflow also smoke-t
 - `pics/{id}.jpg` - downloaded card images (in the EDOPro folder)
 - `config.json` - optional user config (generated with `--generate-config`)
 - `manual_map.json` - optional per-card ID overrides (user-created, not tracked in git)
-- `manual_map.example.json` - copyable example showing the override format. Alternate arts (Blue-Eyes, Dark Magician, etc.) are now auto-handled by the catalog lookup.
+- `manual_map.example.json` - copyable example showing the override format

@@ -16,7 +16,7 @@ Helpful notes
 - If you run it outside your EDOPro folder, the tool will ask you to choose the correct folder.
 - Packaged builds refresh artwork automatically, so you do not need to add --force.
 - config.json is saved beside the AppImage.
-- Each run fetches the current YGOProDeck artwork catalog so alternate arts stay accurate.
+- The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
 
 Quick sanity check
 ------------------
@@ -24,4 +24,4 @@ You can run:
 
 ./EDOPro-HD-Sync-Linux.AppImage --health-check
 
-That runs a quick offline check for the known tricky alternate-art cases.
+That runs a quick offline check to verify the tool is working correctly.

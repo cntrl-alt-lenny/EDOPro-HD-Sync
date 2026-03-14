@@ -197,7 +197,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--health-check",
         action="store_true",
-        help="Run quick offline checks for tricky artwork cases and exit.",
+        help="Run quick offline checks and exit.",
     )
     return p
 

@@ -21,7 +21,7 @@ class HealthCheckTests(unittest.TestCase):
             ]
         )
 
-    def test_run_health_check_passes_for_known_tricky_cards(self):
+    def test_run_health_check_passes(self):
         with mock.patch.object(main.console, "print") as print_mock, mock.patch.object(
             main.console, "rule"
         ):
@@ -29,6 +29,6 @@ class HealthCheckTests(unittest.TestCase):
 
         self.assertTrue(passed)
         printed = "\n".join(str(call.args[0]) for call in print_mock.call_args_list if call.args)
-        self.assertIn("Blue-Eyes White Dragon", printed)
         self.assertIn("Dark Magician (Pre-Errata)", printed)
-        self.assertIn("Everything looks good", printed)
+        self.assertIn("Blue-Eyes White Dragon GOAT", printed)
+        self.assertIn("All checks passed", printed)

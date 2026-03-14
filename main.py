@@ -23,11 +23,6 @@ import aiohttp
 import certifi
 
 from config import Config, BUILTIN_MANUAL_MAP, DEFAULTS
-from tricky_cards import (
-    KNOWN_MULTI_ART_CARDS,
-    KNOWN_SUFFIX_CASES,
-    SAFE_MULTI_ART_FALLBACK_CASE,
-)
 
 if sys.platform == "win32":
     try:
@@ -64,9 +59,9 @@ def _stdout_supports_unicode() -> bool:
     encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
     try:
         "\u2500".encode(encoding)
-    except (LookupError, UnicodeEncodeError):
+        return True
+    except (UnicodeEncodeError, LookupError):
         return False
-    return True
 
 
 if RICH_AVAILABLE and _stdout_supports_unicode():
@@ -75,8 +70,6 @@ else:
     RICH_AVAILABLE = False
 
     class _FallbackConsole:
-        """Bare-minimum stand-in when rich is not installed."""
-
         @staticmethod
         def print(*args, **kwargs):
             kwargs.pop("style", None)
@@ -90,9 +83,7 @@ else:
     console = _FallbackConsole()
 
 
-VERSION = "4.3.1"
-YGOPRODECK_API_URL = "https://db.ygoprodeck.com/api/v7/cardinfo.php"
-YGOPRODECK_CATALOG_TIMEOUT_SECONDS = 120
+VERSION = "4.4.0"
 
 
 def format_duration(seconds: float) -> str:
@@ -112,135 +103,6 @@ def format_rate(count: int, seconds: float) -> str:
     if count <= 0 or seconds <= 0:
         return "n/a"
     return f"{count / seconds:.1f}/s"
-
-
-def is_multi_art_card(card_id: int, official_matches: list[int], is_suffix_match: bool) -> bool:
-    """Return True when the card is a direct-name official multi-art card."""
-    return (
-        card_id < 100_000_000
-        and not is_suffix_match
-        and len(official_matches) > 1
-    )
-
-
-def _parse_image_id(value: object) -> int | None:
-    """Convert an API or config image ID into an integer when possible."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        stripped = value.strip()
-        if stripped.isdigit():
-            return int(stripped)
-    return None
-
-
-def build_ygoprodeck_image_lookup(
-    payload: object,
-    official_source: str,
-) -> dict[int, str]:
-    """Build an exact artwork lookup from the full YGOProDeck catalog payload."""
-    if not isinstance(payload, dict):
-        return {}
-
-    cards = payload.get("data")
-    if not isinstance(cards, list):
-        return {}
-
-    image_lookup: dict[int, str] = {}
-    for card in cards:
-        if not isinstance(card, dict):
-            continue
-        card_images = card.get("card_images")
-        if not isinstance(card_images, list):
-            continue
-        for card_image in card_images:
-            if not isinstance(card_image, dict):
-                continue
-            image_id = _parse_image_id(card_image.get("id"))
-            if image_id is None or image_id in image_lookup:
-                continue
-            image_url = card_image.get("image_url")
-            if isinstance(image_url, str) and image_url.strip():
-                image_lookup[image_id] = image_url.strip()
-            else:
-                image_lookup[image_id] = f"{official_source}/{image_id}.jpg"
-
-    return image_lookup
-
-
-async def fetch_ygoprodeck_image_lookup(
-    session: aiohttp.ClientSession,
-    ssl_ctx: ssl.SSLContext,
-    official_source: str,
-    timeout_seconds: int,
-) -> dict[int, str]:
-    """Fetch the full YGOProDeck card catalog and extract exact artwork URLs."""
-    timeout = aiohttp.ClientTimeout(
-        total=max(timeout_seconds, YGOPRODECK_CATALOG_TIMEOUT_SECONDS)
-    )
-    async with session.get(
-        YGOPRODECK_API_URL,
-        timeout=timeout,
-        ssl=ssl_ctx,
-    ) as resp:
-        if resp.status != 200:
-            raise RuntimeError(f"YGOProDeck catalog returned HTTP {resp.status}")
-        payload = await resp.json(content_type=None)
-
-    image_lookup = build_ygoprodeck_image_lookup(payload, official_source)
-    if not image_lookup:
-        raise RuntimeError("YGOProDeck catalog did not contain any artwork entries")
-    return image_lookup
-
-
-def build_ygoprodeck_download_candidates(
-    card_id: int,
-    official_matches: list[int],
-    manual_match: str | None,
-    is_pre_errata_miss: bool,
-    is_suffix_match: bool,
-    ygoprodeck_lookup: dict[int, str],
-    official_source: str,
-) -> list[tuple[str, str]]:
-    """Build the ordered list of exact YGOProDeck downloads worth trying."""
-    candidates: list[tuple[str, str]] = []
-    seen_ids: set[int] = set()
-    is_multi_art = is_multi_art_card(card_id, official_matches, is_suffix_match)
-
-    def add_candidate(image_id: int | None, reason: str, allow_constructed: bool = False) -> None:
-        if image_id is None or image_id in seen_ids:
-            return
-        url = ygoprodeck_lookup.get(image_id)
-        if url is None:
-            if not allow_constructed:
-                return
-            url = f"{official_source}/{image_id}.jpg"
-        candidates.append((reason, url))
-        seen_ids.add(image_id)
-
-    add_candidate(_parse_image_id(manual_match), "manual-map", allow_constructed=True)
-    add_candidate(
-        card_id,
-        "catalog-id",
-        allow_constructed=(card_id < 100_000_000 and not is_multi_art),
-    )
-
-    if not is_multi_art:
-        for official_match in official_matches:
-            if official_match == card_id:
-                continue
-            add_candidate(
-                official_match,
-                "name-match",
-                allow_constructed=(official_match < 100_000_000),
-            )
-
-    if is_pre_errata_miss and card_id >= 10:
-        add_candidate(card_id - 10, "pre-errata-offset", allow_constructed=True)
-
-    return candidates
 
 
 # Database scanning
@@ -639,32 +501,6 @@ async def _try_download(
     return False
 
 
-async def _try_download_bytes(
-    session: aiohttp.ClientSession,
-    url: str,
-    timeout: aiohttp.ClientTimeout,
-    max_retries: int,
-) -> bytes | None:
-    """Like _try_download but returns raw bytes without writing to disk."""
-    for attempt in range(1, max_retries + 1):
-        try:
-            async with session.get(url, timeout=timeout) as resp:
-                if resp.status == 200:
-                    content = await resp.read()
-                    if len(content) < 512:
-                        if attempt >= max_retries:
-                            return None
-                    else:
-                        return content
-                elif resp.status == 404:
-                    return None
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            pass
-        if attempt < max_retries:
-            await asyncio.sleep(2 ** (attempt - 1))
-    return None
-
-
 async def download_card(
     session: aiohttp.ClientSession,
     card_id: int,
@@ -673,14 +509,12 @@ async def download_card(
     manual_match: str | None,
     is_pre_errata_miss: bool,
     is_suffix_match: bool,
-    ygoprodeck_lookup: dict[int, str],
     cfg: Config,
     stats: DownloadStats,
-    default_art_cache: dict[int, bytes | None],
     progress=None,
     task_id=None,
 ) -> None:
-    """Download a single card image using a catalog-first hybrid fallback."""
+    """Download a single card image using a simple waterfall."""
     filepath = os.path.join(cfg.pics_path, f"{card_id}.jpg")
 
     if not cfg.force and os.path.exists(filepath):
@@ -689,31 +523,34 @@ async def download_card(
             progress.advance(task_id)
         return
 
-    candidates = build_ygoprodeck_download_candidates(
-        card_id,
-        official_matches,
-        manual_match,
-        is_pre_errata_miss,
-        is_suffix_match,
-        ygoprodeck_lookup,
-        cfg.sources["official"],
-    )
+    official_source = cfg.sources["official"]
+    timeout = aiohttp.ClientTimeout(total=cfg.timeout)
 
-    is_multi_art = is_multi_art_card(card_id, official_matches, is_suffix_match)
-    needs_speculative_probe = (
-        is_multi_art
-        and card_id not in ygoprodeck_lookup
-        and official_matches
-        and card_id != min(official_matches)
-    )
+    # Build download candidates in priority order
+    candidates: list[tuple[str, str]] = []
+
+    # 1. Manual override
+    if manual_match:
+        candidates.append(("manual-map", f"{official_source}/{manual_match}.jpg"))
+
+    # 2. Try the card's own ID on YGOProDeck (official cards only)
+    if card_id < 100_000_000:
+        candidates.append(("direct-id", f"{official_source}/{card_id}.jpg"))
+
+    # 3. For GOAT/Pre-Errata suffix cards, try the base card's official IDs
+    if is_suffix_match:
+        for official_id in official_matches:
+            if official_id != card_id:
+                candidates.append(("name-match", f"{official_source}/{official_id}.jpg"))
+
+    # 4. Pre-Errata offset fallback (card_id - 10)
+    if is_pre_errata_miss and card_id >= 10:
+        offset_id = card_id - 10
+        if not any(url.endswith(f"/{offset_id}.jpg") for _, url in candidates):
+            candidates.append(("pre-errata-offset", f"{official_source}/{offset_id}.jpg"))
 
     if cfg.dry_run:
-        if candidates:
-            tag = candidates[0][0]
-        elif needs_speculative_probe:
-            tag = "speculative-hd"
-        else:
-            tag = "fallback"
+        tag = candidates[0][0] if candidates else "fallback"
         console.print(
             f"  [dim]Would download:[/dim] {name} ({card_id}) [{tag}]"
             if RICH_AVAILABLE
@@ -723,8 +560,6 @@ async def download_card(
             progress.advance(task_id)
         return
 
-    timeout = aiohttp.ClientTimeout(total=cfg.timeout)
-
     for reason, url in candidates:
         if await _try_download(session, url, filepath, timeout, cfg.max_retries):
             stats.record_success(card_id, "ok_mapped" if reason == "manual-map" else "ok_hd")
@@ -732,39 +567,7 @@ async def download_card(
                 progress.advance(task_id)
             return
 
-    # YGOProDeck's catalog is safer than guessing, but it is not complete.
-    # For direct-name multi-art cards missing from the catalog, probe the card's
-    # own exact ID and keep it only when it differs from the default art.
-    if needs_speculative_probe:
-        url = f"{cfg.sources['official']}/{card_id}.jpg"
-        candidate = await _try_download_bytes(session, url, timeout, cfg.max_retries)
-        if candidate is not None:
-            default_id = min(official_matches)
-            if default_id in default_art_cache:
-                default_bytes = default_art_cache[default_id]
-            else:
-                default_path = os.path.join(cfg.pics_path, f"{default_id}.jpg")
-                if os.path.exists(default_path):
-                    with open(default_path, "rb") as f:
-                        default_bytes = f.read()
-                else:
-                    default_url = ygoprodeck_lookup.get(
-                        default_id,
-                        f"{cfg.sources['official']}/{default_id}.jpg",
-                    )
-                    default_bytes = await _try_download_bytes(
-                        session, default_url, timeout, cfg.max_retries,
-                    )
-                default_art_cache[default_id] = default_bytes
-
-            if default_bytes is None or candidate != default_bytes:
-                with open(filepath, "wb") as file_obj:
-                    file_obj.write(candidate)
-                stats.record_success(card_id, "ok_hd")
-                if progress and task_id is not None:
-                    progress.advance(task_id)
-                return
-
+    # 5. ProjectIgnis backup
     if "backup" in cfg.sources:
         url = f"{cfg.sources['backup']}/{card_id}.jpg"
         if await _try_download(session, url, filepath, timeout, cfg.max_retries):
@@ -792,7 +595,7 @@ def _build_summary_rows(
     else:
         rows.append(("Downloaded", f"{stats.total_ok:,}", "green"))
         if stats.official_backup:
-            rows.append(("Correct backup art", f"{stats.official_backup:,}", "cyan"))
+            rows.append(("Backup art", f"{stats.official_backup:,}", "cyan"))
         if stats.skipped:
             rows.append(("Already existed", f"{stats.skipped:,}", "dim"))
         if stats.failed:
@@ -818,10 +621,7 @@ def _write_report(stats: DownloadStats, cfg: Config, runtime_seconds: float) -> 
             f.write(f"Speed:     {format_rate(stats.total_ok, runtime_seconds)}\n")
             f.write(f"\nDownloaded:      {stats.total_ok:,}\n")
             if stats.official_backup:
-                f.write(
-                    f"Correct backup art: {stats.official_backup:,}"
-                    " (trusted backup used when HD art was not safe)\n"
-                )
+                f.write(f"Backup art:      {stats.official_backup:,}\n")
             if stats.skipped:
                 f.write(f"Already existed: {stats.skipped:,}\n")
             f.write(f"Unavailable:     {stats.failed:,}\n")
@@ -916,66 +716,39 @@ def _prompt_yes_no(question: str, default: bool = False) -> bool:
 
 
 def run_health_check(cfg: Config) -> bool:
-    """Run quick offline checks for the historical trouble spots."""
+    """Run quick offline checks for suffix-stripping logic."""
     suffixes = DEFAULTS["suffixes_to_strip"]
     name_to_official = {
-        fixture["name"]: list(fixture["official_ids"])
-        for fixture in KNOWN_MULTI_ART_CARDS
+        "Dark Magician": [36996508, 46986414],
+        "Blue-Eyes White Dragon": [89631136, 89631139],
     }
     checks: list[tuple[bool, str]] = []
 
-    for fixture in KNOWN_MULTI_ART_CARDS:
-        official_ids = name_to_official.get(fixture["name"], [])
-        checks.append((
-            official_ids == fixture["official_ids"],
-            f'{fixture["name"]}: {len(official_ids)} official IDs mapped',
-        ))
-
-    for fixture in KNOWN_SUFFIX_CASES:
-        official_ids, is_pre_errata_miss, is_suffix_match = find_official_match(
-            fixture["name"], name_to_official, suffixes, quiet=True,
-        )
-        checks.append((
-            fixture["required_match_id"] in official_ids
-            and is_pre_errata_miss == fixture["expected_pre_errata_miss"]
-            and is_suffix_match == fixture["expected_suffix_match"],
-            f'{fixture["name"]}: suffix stripping still resolves to the base art',
-        ))
-
-    sample_lookup = {
-        image_id: f"{DEFAULTS['sources']['official']}/{image_id}.jpg"
-        for image_id in SAFE_MULTI_ART_FALLBACK_CASE["confirmed_art_ids"]
-    }
-    checks.append((
-        not build_ygoprodeck_download_candidates(
-            SAFE_MULTI_ART_FALLBACK_CASE["card_id"],
-            SAFE_MULTI_ART_FALLBACK_CASE["official_matches"],
-            None,
-            False,
-            False,
-            sample_lookup,
-            DEFAULTS["sources"]["official"],
-        ),
-        "Catalog-driven alt-art matching skips IDs that YGOProDeck does not list",
-    ))
-    alt_art_candidates = build_ygoprodeck_download_candidates(
-        min(SAFE_MULTI_ART_FALLBACK_CASE["confirmed_art_ids"]),
-        SAFE_MULTI_ART_FALLBACK_CASE["official_matches"],
-        None,
-        False,
-        False,
-        sample_lookup,
-        DEFAULTS["sources"]["official"],
+    # Check that suffix stripping resolves Pre-Errata cards to their base
+    official_ids, is_pre_errata_miss, is_suffix_match = find_official_match(
+        "Dark Magician (Pre-Errata)", name_to_official, suffixes, quiet=True,
     )
     checks.append((
-        alt_art_candidates == [
-            (
-                "catalog-id",
-                f"{DEFAULTS['sources']['official']}/"
-                f"{min(SAFE_MULTI_ART_FALLBACK_CASE['confirmed_art_ids'])}.jpg",
-            )
-        ],
-        "Catalog-driven alt-art matching keeps confirmed distinct-art IDs",
+        46986414 in official_ids and not is_pre_errata_miss and is_suffix_match,
+        "Dark Magician (Pre-Errata): suffix stripping resolves to base art",
+    ))
+
+    # Check that GOAT suffix stripping works
+    official_ids, is_pre_errata_miss, is_suffix_match = find_official_match(
+        "Blue-Eyes White Dragon GOAT", name_to_official, suffixes, quiet=True,
+    )
+    checks.append((
+        89631136 in official_ids and not is_pre_errata_miss and is_suffix_match,
+        "Blue-Eyes White Dragon GOAT: suffix stripping resolves to base art",
+    ))
+
+    # Check that Pre-Errata miss is flagged when base name is absent
+    official_ids, is_pre_errata_miss, is_suffix_match = find_official_match(
+        "Summoned Skull (Pre-Errata)", name_to_official, suffixes, quiet=True,
+    )
+    checks.append((
+        is_pre_errata_miss and not is_suffix_match,
+        "Summoned Skull (Pre-Errata): flags pre-errata miss when base is absent",
     ))
 
     if RICH_AVAILABLE:
@@ -990,18 +763,12 @@ def run_health_check(cfg: Config) -> bool:
         )
         console.print(f"  {prefix} {label}")
 
-    console.print(
-        "[dim]Health check uses built-in fixtures only. The live YGOProDeck catalog is fetched during a normal sync.[/dim]"
-        if RICH_AVAILABLE
-        else "Health check uses built-in fixtures only. The live YGOProDeck catalog is fetched during a normal sync."
-    )
-
     passed = all(ok for ok, _ in checks)
     console.print(
-        "\n[bold green]Everything looks good — tricky card logic passed.[/bold green]"
+        "\n[bold green]All checks passed.[/bold green]"
         if passed and RICH_AVAILABLE
         else (
-            "\nEverything looks good — tricky card logic passed."
+            "\nAll checks passed."
             if passed
             else (
                 "\n[bold red]Health check failed — please review the messages above.[/bold red]"
@@ -1102,37 +869,6 @@ async def run(cfg: Config):
                 else f"Cannot reach image server: {exc}"
             )
 
-        ygoprodeck_lookup: dict[int, str] = {}
-        console.print(
-            "[dim]Loading YGOProDeck artwork catalog...[/dim]"
-            if RICH_AVAILABLE
-            else "Loading YGOProDeck artwork catalog..."
-        )
-        try:
-            ygoprodeck_lookup = await fetch_ygoprodeck_image_lookup(
-                session,
-                ssl_ctx,
-                cfg.sources["official"],
-                cfg.timeout,
-            )
-            console.print(
-                f"[dim]Loaded {len(ygoprodeck_lookup):,} artwork IDs from YGOProDeck.[/dim]"
-                if RICH_AVAILABLE
-                else f"Loaded {len(ygoprodeck_lookup):,} artwork IDs from YGOProDeck."
-            )
-        except Exception as exc:
-            console.print(
-                f"[yellow]Could not load the YGOProDeck artwork catalog: {exc} "
-                "ProjectIgnis backup mode will be used when exact matches are unavailable.[/yellow]"
-                if RICH_AVAILABLE
-                else (
-                    "Could not load the YGOProDeck artwork catalog: "
-                    f"{exc}. ProjectIgnis backup mode will be used when exact matches are unavailable."
-                )
-            )
-
-        default_art_cache: dict[int, bytes | None] = {}
-
         def make_worker(progress=None, task_id=None):
             async def worker():
                 while True:
@@ -1150,10 +886,8 @@ async def run(cfg: Config):
                         manual,
                         is_pre_errata_miss,
                         is_suffix_match,
-                        ygoprodeck_lookup,
                         cfg,
                         stats,
-                        default_art_cache,
                         progress,
                         task_id,
                     )

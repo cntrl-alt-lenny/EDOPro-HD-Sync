@@ -11,7 +11,7 @@ Helpful notes
 - The launcher downloads the latest binary automatically if the macOS app file is missing.
 - Packaged builds refresh artwork automatically, so you do not need to add --force.
 - config.json is kept beside the tool files in this folder.
-- Each run fetches the current YGOProDeck artwork catalog so alternate arts stay accurate.
+- The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
 
 Quick sanity check
 ------------------
@@ -19,4 +19,4 @@ You can also run this in Terminal from the tool folder:
 
 ./EDOPro-HD-Sync-macOS --health-check
 
-That runs a quick offline check for the known tricky alternate-art cases.
+That runs a quick offline check to verify the tool is working correctly.
