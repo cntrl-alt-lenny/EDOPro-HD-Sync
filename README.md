@@ -19,9 +19,9 @@
 
 ## Why It Feels Better
 
-- **Single YGOProDeck catalog lookup** - asks once which artwork IDs really exist
-- **Safer alternate-art handling** - avoids wrong default images when a card has many IDs
-- **Offline health check** - quickly verifies the historical trouble spots
+- **Tries every card ID directly** - no startup catalog download, just simple direct requests
+- **Truthful alternate-art handling** - falls back to ProjectIgnis when YGOProDeck doesn't have the art
+- **Offline health check** - quickly verifies suffix-stripping logic
 - **Simple packaged releases** - ready-to-use downloads for Windows, macOS, and Linux
 
 ## Quick Start
@@ -63,16 +63,16 @@ python main.py --health-check
 
 ## How It Works
 
-Scans all `.cdb` card databases in your EDOPro folder, downloads the full [YGOProDeck](https://ygoprodeck.com) card catalog once, and then uses that exact artwork list to fetch HD images with a [ProjectIgnis](https://github.com/ProjectIgnis/Images) fallback.
+Scans all `.cdb` card databases in your EDOPro folder, tries each card's ID directly on [YGOProDeck](https://ygoprodeck.com), and falls back to [ProjectIgnis](https://github.com/ProjectIgnis/Images) when the HD image isn't available.
 
-- **Alternate artworks** - downloaded only when YGOProDeck explicitly lists that exact art ID
+- **Alternate artworks** - each art ID is tried individually on YGOProDeck; if it 404s, ProjectIgnis provides the backup
 - **GOAT format cards** - matched to their official artwork by stripping the GOAT suffix
 - **Pre-Errata cards** - resolved via suffix stripping, with a small ID-offset fallback for legacy edge cases
 - **Manual overrides** - optional `manual_map.json` for edge cases
 
 ## Helpful Commands
 
-- `python main.py --health-check` runs an offline sanity check for Blue-Eyes, Dark Magician, Red-Eyes, and Pre-Errata matching logic
+- `python main.py --health-check` runs an offline sanity check for suffix-stripping and Pre-Errata matching
 - `python main.py --dry-run` previews what would be downloaded
 
 ## Contributing

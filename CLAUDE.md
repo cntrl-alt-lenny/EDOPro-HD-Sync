@@ -83,9 +83,10 @@ Each bundle includes a platform-specific `ReadMe.txt`. The workflow also smoke-t
 
 ## macOS launcher (`EDOPro-HD-Sync.command`)
 - Bash script, double-click opens it in Terminal
-- `cd "$(dirname "$0")"` sets working dir to the EDOPro folder
-- Downloads the binary from the latest release if not already present
+- `cd "$SCRIPT_DIR/.."` sets working dir to the EDOPro folder (one level up from the tool folder)
+- Downloads the binary from the latest GitHub release if not already present
 - `xattr -d com.apple.quarantine` strips the macOS quarantine flag so users only get one security prompt
+- Runs the binary with `--force` (re-downloads all artwork every time)
 - Must stay marked executable in git: `git update-index --chmod=+x EDOPro-HD-Sync.command`
 
 ## Output files

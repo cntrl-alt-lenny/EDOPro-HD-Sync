@@ -14,8 +14,6 @@ import sys
 
 BUILTIN_MANUAL_MAP: dict[str, str] = {
     # Add card_id -> image_id overrides here for cards that can't be auto-matched.
-    # Blue-Eyes alternate arts no longer need entries: the catalog lookup now
-    # only downloads artwork IDs that YGOProDeck explicitly lists.
 }
 
 DEFAULTS = {
