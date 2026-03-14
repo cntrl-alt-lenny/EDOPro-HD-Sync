@@ -600,6 +600,15 @@ def _build_summary_rows(
             rows.append(("Already existed", f"{stats.skipped:,}", "dim"))
         if stats.failed:
             rows.append(("Unavailable", f"{stats.failed:,}", "yellow"))
+            rush = stats.rush_failures
+            unofficial = stats.unofficial_failures
+            official = stats.official_failures
+            if rush:
+                rows.append(("  Rush Duel", f"{rush:,}", "dim"))
+            if unofficial:
+                rows.append(("  Anime / fan-made", f"{unofficial:,}", "dim"))
+            if official:
+                rows.append(("  Official", f"{len(official):,}", "dim"))
         rows.append(("Time", format_duration(runtime_seconds), None))
         rows.append(("Speed", format_rate(stats.total_ok, runtime_seconds), None))
     return rows
@@ -661,7 +670,10 @@ def _write_report(stats: DownloadStats, cfg: Config, runtime_seconds: float) -> 
         )
 
 
-def print_summary(stats: DownloadStats, cfg: Config, runtime_seconds: float):
+def print_summary(
+    stats: DownloadStats, cfg: Config, runtime_seconds: float,
+    save_report: bool = False,
+):
     """Print a clean terminal summary and optionally save a report."""
     rows = _build_summary_rows(stats, cfg, runtime_seconds)
     label_width = max(len(label) for label, _, _ in rows)
@@ -688,13 +700,8 @@ def print_summary(stats: DownloadStats, cfg: Config, runtime_seconds: float):
     if cfg.dry_run:
         return
 
-    # Write report automatically if --save-report was passed,
-    # otherwise prompt interactively (unless --quiet).
-    if cfg.save_report:
+    if save_report:
         _write_report(stats, cfg, runtime_seconds)
-    elif not cfg.quiet:
-        if _prompt_yes_no("Save a sync report?"):
-            _write_report(stats, cfg, runtime_seconds)
 
 
 # Main
@@ -826,6 +833,17 @@ async def run(cfg: Config):
         )
         return
 
+    console.print(
+        f"\n[bold yellow]This will download all {len(missing_ids):,} card images.[/bold yellow]"
+        if RICH_AVAILABLE
+        else f"\nThis will download all {len(missing_ids):,} card images."
+    )
+
+    # Ask about saving a report before starting (unless --save-report or --quiet).
+    save_report_after = cfg.save_report
+    if not cfg.dry_run and not cfg.save_report and not cfg.quiet:
+        save_report_after = _prompt_yes_no("Save a sync report when finished?")
+
     # Pre-compute match info for every card to avoid redundant lookups in workers.
     card_match_info: dict[int, tuple[list[int], str | None, bool, bool]] = {}
     for card_id in missing_ids:
@@ -910,7 +928,7 @@ async def run(cfg: Config):
             workers = [make_worker()() for _ in range(cfg.concurrency)]
             await asyncio.gather(*workers)
 
-    print_summary(stats, cfg, perf_counter() - started_at)
+    print_summary(stats, cfg, perf_counter() - started_at, save_report_after)
 
 
 def should_pause_before_exit(cfg: Config | None) -> bool:

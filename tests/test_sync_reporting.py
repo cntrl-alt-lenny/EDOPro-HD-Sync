@@ -86,7 +86,7 @@ class SyncReportingTests(unittest.TestCase):
             main.console, "print"
         ), mock.patch.object(main.console, "rule"), mock.patch.object(main, "datetime") as datetime_mock:
             datetime_mock.now.return_value = fixed_now
-            main.print_summary(stats, cfg, 12.0)
+            main.print_summary(stats, cfg, 12.0, save_report=True)
 
         report_path = os.path.join(self.edopro_path, "sync-report-20260312-140506.txt")
         self.assertTrue(os.path.exists(report_path))
