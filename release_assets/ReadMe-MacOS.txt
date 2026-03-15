@@ -12,6 +12,7 @@ Helpful notes
 - Packaged builds refresh artwork automatically, so you do not need to add --force.
 - config.json is kept beside the tool files in this folder.
 - The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
+- Multi-art cards (e.g. Ring of Destruction, Rescue Cat) get distinct artwork for each variant automatically.
 
 Quick sanity check
 ------------------

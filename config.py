@@ -13,7 +13,23 @@ import os
 import sys
 
 BUILTIN_MANUAL_MAP: dict[str, str] = {
-    # Add card_id -> image_id overrides here for cards that can't be auto-matched.
+    # When multiple suffix variants (GOAT / Pre-Errata) share the same base name,
+    # suffix stripping returns all official IDs but always tries them in the same
+    # order — so every variant ends up with the first artwork.  These overrides pin
+    # each variant to a distinct official artwork.
+    #
+    # Ring of Destruction (Pre-Errata)
+    "511000824": "83555666",
+    "511000825": "83555667",
+    # Crush Card Virus (Pre-Errata)
+    "511000822": "57728570",
+    "511000823": "57728571",
+    # Metalmorph — GOAT + Pre-Errata
+    "504700111": "68540058",
+    "511006005": "68540059",
+    # Rescue Cat — GOAT + Pre-Errata
+    "504700179": "14878871",
+    "511002992": "14878872",
 }
 
 DEFAULTS = {

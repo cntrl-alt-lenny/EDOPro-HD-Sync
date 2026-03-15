@@ -11,6 +11,7 @@ Helpful notes
 - Packaged builds refresh artwork automatically, so you do not need to add --force.
 - The tool remembers your chosen EDOPro folder in config.json beside the exe.
 - The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
+- Multi-art cards (e.g. Ring of Destruction, Rescue Cat) get distinct artwork for each variant automatically.
 - If Windows warns about the app, click "More info" and then "Run anyway" unless your release notes say the build is signed.
 
 Quick sanity check

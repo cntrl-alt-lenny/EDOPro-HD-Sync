@@ -46,7 +46,7 @@ From these it builds two maps:
 - `name_to_official` - name -> all official Konami IDs seen for that name (only IDs < 100,000,000)
 
 ### Download waterfall (in order, stops at first success)
-1. **Manual override** - `manual_map.json` lets users pin specific card IDs.
+1. **Manual override** - `BUILTIN_MANUAL_MAP` in `config.py` plus the user's optional `manual_map.json`. The built-in map pins multi-art suffix cards (e.g. two "Ring of Destruction (Pre-Errata)" variants) to distinct official artworks, since suffix stripping alone would give them all the same image.
 2. **Direct ID on YGOProDeck** - tries `https://images.ygoprodeck.com/images/cards/{card_id}.jpg`. Skipped for unofficial IDs (>= 100M) since YGOProDeck won't have them.
 3. **Name-matched HD** - for GOAT/Pre-Errata suffix cards only. Strips the suffix, finds the base card's official IDs, and tries those on YGOProDeck.
 4. **Pre-Errata offset fallback** - if a Pre-Errata suffix matched but the base card was missing from the scanned DBs, try `card_id - 10` on YGOProDeck.
