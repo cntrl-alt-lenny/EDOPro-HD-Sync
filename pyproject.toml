@@ -1,0 +1,22 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["build", "dist", "AppDir"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line length handled by formatter; keep prose strings readable
+    "SIM108", # prefer explicit if/else over ternary where it improves readability
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]

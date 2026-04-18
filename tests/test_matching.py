@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 import main
-from config import Config, DEFAULTS
+from config import DEFAULTS, Config
 
 
 class OfficialMatchingTests(unittest.TestCase):
@@ -14,8 +14,7 @@ class OfficialMatchingTests(unittest.TestCase):
         self.suffixes = DEFAULTS["suffixes_to_strip"]
 
     def test_scan_databases_keeps_all_official_ids_for_duplicate_names(self):
-        workspace_root = os.getcwd()
-        with tempfile.TemporaryDirectory(dir=workspace_root) as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             db_path = os.path.join(temp_dir, "cards.cdb")
             conn = sqlite3.connect(db_path)
             try:
@@ -47,8 +46,7 @@ class OfficialMatchingTests(unittest.TestCase):
         self.assertNotIn("Unofficial Blue-Eyes", name_to_official)
 
     def test_scan_databases_sorts_official_ids_for_stable_fallback_order(self):
-        workspace_root = os.getcwd()
-        with tempfile.TemporaryDirectory(dir=workspace_root) as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             db_path = os.path.join(temp_dir, "cards.cdb")
             conn = sqlite3.connect(db_path)
             try:
@@ -111,8 +109,7 @@ class OfficialMatchingTests(unittest.TestCase):
 
 class DownloadCardTests(unittest.TestCase):
     def setUp(self):
-        workspace_root = os.getcwd()
-        self.temp_dir = tempfile.TemporaryDirectory(dir=workspace_root)
+        self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.cfg = Config(
             [

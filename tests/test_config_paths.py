@@ -10,8 +10,7 @@ from config import Config
 
 class ConfigPathTests(unittest.TestCase):
     def setUp(self):
-        self.workspace_root = os.getcwd()
-        self.temp_dir = tempfile.TemporaryDirectory(dir=self.workspace_root)
+        self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.test_root = self.temp_dir.name
         self.original_cwd = os.getcwd()
@@ -71,7 +70,7 @@ class ConfigPathTests(unittest.TestCase):
         self.assertTrue(saved)
         self.assertEqual(cfg.config_path, os.path.join(frozen_dir, config_module.CONFIG_FILENAME))
         self.assertTrue(os.path.exists(cfg.config_path))
-        with open(cfg.config_path, "r", encoding="utf-8") as file_obj:
+        with open(cfg.config_path, encoding="utf-8") as file_obj:
             saved_config = json.load(file_obj)
         self.assertEqual(saved_config["edopro_path"], os.path.abspath(edopro_path))
 

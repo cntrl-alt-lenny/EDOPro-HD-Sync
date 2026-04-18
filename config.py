@@ -87,7 +87,7 @@ def _load_config_file(path: str) -> dict:
     if not os.path.exists(path):
         return {}
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             print(f"Warning: {path} must contain a JSON object at the top level; using defaults.")
@@ -156,8 +156,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--force",
-        action="store_true",
-        help="Re-download ALL images, even ones that already exist.",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Re-download ALL images, even ones that already exist. "
+            "Packaged builds force-refresh by default; pass --no-force to keep existing files."
+        ),
     )
     p.add_argument(
         "--dry-run",
@@ -200,7 +204,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--save-report",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Write a timestamped .txt sync report (includes failed cards) beside the executable/script.",
     )
     p.add_argument(
@@ -285,13 +290,18 @@ class Config:
             "suffixes_to_strip", DEFAULTS["suffixes_to_strip"]
         )
 
-        self.force: bool = self.cli.force or getattr(sys, "frozen", False)
+        frozen = getattr(sys, "frozen", False)
+        self.force: bool = _ensure_bool(
+            "force",
+            _pick_value(self.cli.force, file_cfg.get("force"), frozen),
+            frozen,
+        )
         self.dry_run: bool = self.cli.dry_run
         self.quiet: bool = self.cli.quiet
         self.save_report: bool = _ensure_bool(
             "save_report",
             _pick_value(
-                self.cli.save_report or None,
+                self.cli.save_report,
                 file_cfg.get("save_report"),
                 DEFAULTS["save_report"],
             ),
