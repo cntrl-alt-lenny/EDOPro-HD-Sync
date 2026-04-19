@@ -108,6 +108,63 @@ class SyncReportingTests(unittest.TestCase):
 
         self.assertIn(("Backup art", "1", "cyan"), rows)
 
+    def test_token_cards_are_split_out_of_official_failures(self):
+        stats = main.DownloadStats()
+        stats.record_failure(42427231, "Machine Token")
+        stats.record_failure(35552986, "Fiendsmith Token")
+        stats.record_failure(46986414, "Dark Magician")
+
+        self.assertEqual(
+            [cid for cid, _ in stats.token_failures],
+            [42427231, 35552986],
+        )
+        self.assertEqual(
+            [cid for cid, _ in stats.official_failures],
+            [46986414],
+        )
+
+    def test_token_collector_stays_in_official_bucket(self):
+        """Real playable cards that start with 'Token' must not be reclassified."""
+        stats = main.DownloadStats()
+        stats.record_failure(44918102, "Token Collector")
+        stats.record_failure(69247836, "Token Stampede")
+        stats.record_failure(57063504, "Token Thanksgiving")
+
+        self.assertEqual(stats.token_failures, [])
+        self.assertEqual(len(stats.official_failures), 3)
+
+    def test_summary_includes_token_breakdown_row(self):
+        stats = main.DownloadStats()
+        stats.record_failure(42427231, "Machine Token")
+        cfg = self.make_cfg(quiet=True)
+
+        rows = main._build_summary_rows(stats, cfg, 5.0)
+
+        self.assertIn(("  Tokens / placeholders", "1", "dim"), rows)
+
+    def test_report_file_lists_tokens_separately(self):
+        stats = main.DownloadStats()
+        stats.record_failure(42427231, "Machine Token")
+        stats.record_failure(46986414, "Dark Magician")
+        cfg = self.make_cfg(save_report=True, quiet=True)
+        fixed_now = datetime(2026, 5, 1, 10, 0, 0)
+
+        with mock.patch.object(main, "RICH_AVAILABLE", True), mock.patch.object(
+            main.console, "print"
+        ), mock.patch.object(main.console, "rule"), mock.patch.object(main, "datetime") as datetime_mock:
+            datetime_mock.now.return_value = fixed_now
+            main.print_summary(stats, cfg, 5.0, save_report=True)
+
+        report_path = os.path.join(self.edopro_path, "sync-report-20260501-100000.txt")
+        with open(report_path, encoding="utf-8") as f:
+            contents = f.read()
+
+        self.assertIn("Tokens / placeholders: 1", contents)
+        self.assertIn("Official cards:        1", contents)
+        # The "Dark Magician" entry should appear in the official list; "Machine Token" should not.
+        self.assertIn("Dark Magician", contents)
+        self.assertNotIn("  42427231\tMachine Token", contents)
+
 
 if __name__ == "__main__":
     unittest.main()
