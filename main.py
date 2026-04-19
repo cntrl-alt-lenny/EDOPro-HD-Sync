@@ -392,6 +392,17 @@ def find_official_match(
     return name_to_official.get(name, []), pre_errata_miss, False
 
 
+def _is_token_name(name: str) -> bool:
+    """Return True when the card name identifies a token placeholder.
+
+    Matches names that end with the word "Token" (e.g. "Machine Token",
+    "Sheep Token", "Fiendsmith Token"). Real cards that merely contain
+    "Token" — "Token Collector", "Token Stampede", "Token Thanksgiving" —
+    don't end with it and stay in the Official bucket.
+    """
+    return name.rstrip().endswith(" Token")
+
+
 def load_manual_map(path: str) -> dict[str, str]:
     """Load built-in overrides, merged with the optional manual_map.json file.
 
@@ -446,11 +457,29 @@ class DownloadStats:
         )
 
     @property
-    def official_failures(self) -> list[tuple[int, str]]:
-        """Official non-Rush cards that failed — these are actual problems."""
+    def token_failures(self) -> list[tuple[int, str]]:
+        """Official-ID cards whose name marks them as a token placeholder.
+
+        These have no artwork on YGOProDeck or ProjectIgnis by nature — they're
+        counters/tokens that EDOPro stores with official-looking IDs but which
+        Konami has never printed as a real card. Reporting them separately
+        keeps the 'Official' bucket focused on genuine coverage gaps.
+        """
         return [
             (cid, name) for cid, name in self.failed_cards
-            if cid < 100_000_000 and cid not in self._rush_ids
+            if cid < 100_000_000
+            and cid not in self._rush_ids
+            and _is_token_name(name)
+        ]
+
+    @property
+    def official_failures(self) -> list[tuple[int, str]]:
+        """Official non-Rush, non-token cards that failed — these are actual problems."""
+        return [
+            (cid, name) for cid, name in self.failed_cards
+            if cid < 100_000_000
+            and cid not in self._rush_ids
+            and not _is_token_name(name)
         ]
 
     def record_success(self, card_id: int, counter_name: str) -> None:
@@ -612,11 +641,14 @@ def _build_summary_rows(
             rows.append(("Unavailable", f"{stats.failed:,}", "yellow"))
             rush = stats.rush_failures
             unofficial = stats.unofficial_failures
+            tokens = stats.token_failures
             official = stats.official_failures
             if rush:
                 rows.append(("  Rush Duel", f"{rush:,}", "dim"))
             if unofficial:
                 rows.append(("  Anime / fan-made", f"{unofficial:,}", "dim"))
+            if tokens:
+                rows.append(("  Tokens / placeholders", f"{len(tokens):,}", "dim"))
             if official:
                 rows.append(("  Official", f"{len(official):,}", "dim"))
         rows.append(("Time", format_duration(runtime_seconds), None))
@@ -652,11 +684,14 @@ def _write_report(stats: DownloadStats, cfg: Config, runtime_seconds: float) -> 
                 f.write(f"{'=' * 40}\n")
                 rush = stats.rush_failures
                 unofficial = stats.unofficial_failures
+                tokens = stats.token_failures
                 official = stats.official_failures
                 if rush:
                     f.write(f"  Rush Duel cards:       {rush:,}\n")
                 if unofficial:
                     f.write(f"  Anime / fan-made:      {unofficial:,}\n")
+                if tokens:
+                    f.write(f"  Tokens / placeholders: {len(tokens):,}\n")
                 if official:
                     f.write(f"  Official cards:        {len(official):,}\n")
                     f.write(
