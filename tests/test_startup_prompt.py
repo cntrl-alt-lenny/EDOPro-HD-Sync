@@ -35,8 +35,7 @@ class FakeSession:
 
 class StartupPromptTests(unittest.TestCase):
     def setUp(self):
-        self.workspace_root = os.getcwd()
-        self.temp_dir = tempfile.TemporaryDirectory(dir=self.workspace_root)
+        self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.test_root = self.temp_dir.name
 
@@ -72,7 +71,7 @@ class StartupPromptTests(unittest.TestCase):
 
         self.assertEqual(dbs, [os.path.join(valid_path, "cards.cdb")])
         self.assertEqual(cfg.edopro_path, os.path.abspath(valid_path))
-        with open(config_path, "r", encoding="utf-8") as file_obj:
+        with open(config_path, encoding="utf-8") as file_obj:
             saved = json.load(file_obj)
         self.assertEqual(saved["edopro_path"], os.path.abspath(valid_path))
         self.assertEqual(saved["concurrency"], 7)
@@ -113,24 +112,55 @@ class StartupPromptTests(unittest.TestCase):
 
         scan_mock.assert_called_once_with(expected_dbs)
         self.assertTrue(os.path.isdir(os.path.join(valid_path, "pics")))
-        with open(config_path, "r", encoding="utf-8") as file_obj:
+        with open(config_path, encoding="utf-8") as file_obj:
             saved = json.load(file_obj)
         self.assertEqual(saved["edopro_path"], os.path.abspath(valid_path))
 
     def test_run_with_empty_database_exits_cleanly(self):
+        """Zero-byte cards.cdb should be treated as 'nothing to sync', not a failure."""
         config_path = self.write_config({})
-        valid_path = self.make_edopro_dir("empty-db")
+        valid_path = self.make_edopro_dir("empty-db", with_cards=True)
         cfg = Config(["--config", config_path, "--force", "--quiet"])
         cfg.set_edopro_path(valid_path)
 
+        cards_db = os.path.join(valid_path, "cards.cdb")
+
         with mock.patch.object(
-            main, "get_db_files", return_value=[os.path.join(valid_path, "cards.cdb")]
+            main, "get_db_files", return_value=[cards_db]
         ), mock.patch.object(
             main, "scan_databases", return_value=({}, {}, set())
         ), mock.patch.object(
             main, "load_manual_map", return_value={}
         ):
             asyncio.run(main.run(cfg))
+
+        # Expect no sync report and an empty pics directory (nothing to download).
+        self.assertFalse(
+            any(f.startswith("sync-report") for f in os.listdir(valid_path))
+        )
+        self.assertTrue(os.path.isdir(os.path.join(valid_path, "pics")))
+
+    def test_run_exits_non_zero_when_non_empty_dbs_yield_no_cards(self):
+        """A corrupt non-empty DB that yields zero cards should fail the run."""
+        config_path = self.write_config({})
+        valid_path = self.make_edopro_dir("corrupt-db")
+        cfg = Config(["--config", config_path, "--quiet"])
+        cfg.set_edopro_path(valid_path)
+
+        cards_db = os.path.join(valid_path, "cards.cdb")
+        with open(cards_db, "wb") as f:
+            f.write(b"not a real sqlite file")
+
+        with mock.patch.object(
+            main, "get_db_files", return_value=[cards_db]
+        ), mock.patch.object(
+            main, "scan_databases", return_value=({}, {}, set())
+        ), mock.patch.object(
+            main, "load_manual_map", return_value={}
+        ), self.assertRaises(SystemExit) as ctx:
+            asyncio.run(main.run(cfg))
+
+        self.assertEqual(ctx.exception.code, 1)
 
 
 if __name__ == "__main__":

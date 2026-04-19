@@ -20,6 +20,7 @@ config.json
 manual_map.json
 sync-report-*.txt
 Sync-Failed-*.txt
+*.part
 
 # EDOPro Game Files (IMPORTANT: Ignore these so they don't go to GitHub)
 pics/

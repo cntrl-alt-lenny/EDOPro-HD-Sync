@@ -10,8 +10,7 @@ import main
 
 class SyncReportingTests(unittest.TestCase):
     def setUp(self):
-        self.workspace_root = os.getcwd()
-        self.temp_dir = tempfile.TemporaryDirectory(dir=self.workspace_root)
+        self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.edopro_path = self.temp_dir.name
         self.pics_path = os.path.join(self.edopro_path, "pics")
@@ -91,7 +90,7 @@ class SyncReportingTests(unittest.TestCase):
         report_path = os.path.join(self.edopro_path, "sync-report-20260312-140506.txt")
         self.assertTrue(os.path.exists(report_path))
 
-        with open(report_path, "r", encoding="utf-8") as file_obj:
+        with open(report_path, encoding="utf-8") as file_obj:
             report_contents = file_obj.read()
 
         self.assertIn("Downloaded:      3", report_contents)

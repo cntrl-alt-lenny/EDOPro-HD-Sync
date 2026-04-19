@@ -39,6 +39,7 @@ jobs:
           version="dev"
         fi
         echo "value=${version}" >> "$GITHUB_OUTPUT"
+        printf '%s\n' "${version}" > VERSION
 
     - name: Install Dependencies
       shell: bash
@@ -53,7 +54,7 @@ jobs:
     - name: Build with PyInstaller
       shell: bash
       run: |
-        pyinstaller --onefile --name EDOPro-HD-Sync --icon build/app-icon.ico --collect-data certifi main.py
+        pyinstaller --onefile --name EDOPro-HD-Sync --icon build/app-icon.ico --collect-data certifi --add-data "VERSION${{ matrix.os == 'windows-latest' && ';' || ':' }}." main.py
 
     - name: Smoke test packaged binary
       shell: bash
@@ -207,10 +208,26 @@ jobs:
           echo "path=dist/EDOPro-HD-Sync-Linux-v${version}.zip" >> "$GITHUB_OUTPUT"
         fi
 
+    - name: Compute SHA256 checksum
+      id: checksum
+      shell: bash
+      run: |
+        archive="${{ steps.release_file.outputs.path }}"
+        checksum_path="${archive}.sha256"
+        if [ "${{ matrix.os }}" = "macos-latest" ]; then
+          (cd "$(dirname "$archive")" && shasum -a 256 "$(basename "$archive")") > "$checksum_path"
+        else
+          (cd "$(dirname "$archive")" && sha256sum "$(basename "$archive")") > "$checksum_path"
+        fi
+        echo "path=${checksum_path}" >> "$GITHUB_OUTPUT"
+        cat "$checksum_path"
+
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
         name: EDOPro HD Sync v${{ steps.release_version.outputs.value }}
         fail_on_unmatched_files: true
-        files: ${{ steps.release_file.outputs.path }}
+        files: |
+          ${{ steps.release_file.outputs.path }}
+          ${{ steps.checksum.outputs.path }}

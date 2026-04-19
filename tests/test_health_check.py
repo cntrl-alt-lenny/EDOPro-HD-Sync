@@ -9,8 +9,7 @@ from config import Config
 
 class HealthCheckTests(unittest.TestCase):
     def setUp(self):
-        self.workspace_root = os.getcwd()
-        self.temp_dir = tempfile.TemporaryDirectory(dir=self.workspace_root)
+        self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.cfg = Config(
             [

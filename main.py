@@ -9,9 +9,11 @@ Improvements over the original:
 """
 
 import asyncio
+import contextlib
 import json
 import ntpath
 import os
+import re
 import sqlite3
 import ssl
 import subprocess
@@ -22,7 +24,7 @@ from time import perf_counter
 import aiohttp
 import certifi
 
-from config import Config, BUILTIN_MANUAL_MAP, DEFAULTS
+from config import BUILTIN_MANUAL_MAP, DEFAULTS, Config
 
 if sys.platform == "win32":
     try:
@@ -64,6 +66,14 @@ def _stdout_supports_unicode() -> bool:
         return False
 
 
+_MARKUP_RE = re.compile(r"\[/?[a-zA-Z0-9_#][a-zA-Z0-9 _#]*\]")
+
+
+def _strip_markup(value: str) -> str:
+    """Remove Rich-style [tag]...[/tag] markup so plain consoles stay readable."""
+    return _MARKUP_RE.sub("", value)
+
+
 if RICH_AVAILABLE and _stdout_supports_unicode():
     console = Console()
 else:
@@ -74,16 +84,31 @@ else:
         def print(*args, **kwargs):
             kwargs.pop("style", None)
             kwargs.pop("highlight", None)
-            print(*args, **kwargs)
+            stripped = tuple(
+                _strip_markup(arg) if isinstance(arg, str) else arg for arg in args
+            )
+            print(*stripped, **kwargs)
 
         @staticmethod
         def rule(title=""):
-            print(f"\n{'-' * 20} {title} {'-' * 20}\n")
+            print(f"\n{'-' * 20} {_strip_markup(title)} {'-' * 20}\n")
 
     console = _FallbackConsole()
 
 
-VERSION = "4.4.3"
+def _read_version() -> str:
+    """Read the VERSION file bundled next to the script/executable."""
+    base = getattr(sys, "_MEIPASS", None) or os.path.dirname(
+        os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__)
+    )
+    try:
+        with open(os.path.join(base, "VERSION"), encoding="utf-8") as f:
+            return f.read().strip() or "dev"
+    except OSError:
+        return "dev"
+
+
+VERSION = _read_version()
 
 
 def format_duration(seconds: float) -> str:
@@ -221,10 +246,8 @@ def browse_for_edopro_path(initial_dir: str) -> tuple[str | None, bool]:
         return None, False
     finally:
         if root is not None:
-            try:
+            with contextlib.suppress(Exception):
                 root.destroy()
-            except Exception:
-                pass
 
 
 def read_edopro_path_from_console() -> str | None:
@@ -241,11 +264,7 @@ def read_edopro_path_from_console() -> str | None:
 def prompt_for_edopro_path(cfg: Config) -> list[str] | None:
     """Prompt until the user enters a valid EDOPro folder or cancels."""
     checked_path = os.path.abspath(cfg.edopro_path)
-    console.print(
-        f"[yellow]No .cdb files found in:[/yellow] [bold]{checked_path}[/bold]"
-        if RICH_AVAILABLE
-        else f"No .cdb files found in: {checked_path}"
-    )
+    console.print(f"[yellow]No .cdb files found in:[/yellow] [bold]{checked_path}[/bold]")
 
     if sys.platform == "win32":
         console.print("Select your EDOPro folder in the window that opens. Cancel to quit.")
@@ -259,36 +278,23 @@ def prompt_for_edopro_path(cfg: Config) -> list[str] | None:
             candidate, used_dialog = browse_for_edopro_path(cfg.edopro_path)
             if used_dialog:
                 if not candidate:
-                    console.print(
-                        "[yellow]No folder selected. Exiting.[/yellow]"
-                        if RICH_AVAILABLE
-                        else "No folder selected. Exiting."
-                    )
+                    console.print("[yellow]No folder selected. Exiting.[/yellow]")
                     return None
             else:
                 if not warned_about_fallback:
                     console.print(
-                        "[yellow]Windows folder picker unavailable. Enter the path manually instead.[/yellow]"
-                        if RICH_AVAILABLE
-                        else "Windows folder picker unavailable. Enter the path manually instead."
+                        "[yellow]Windows folder picker unavailable. "
+                        "Enter the path manually instead.[/yellow]"
                     )
                     warned_about_fallback = True
                 candidate = read_edopro_path_from_console()
                 if not candidate:
-                    console.print(
-                        "[yellow]No folder entered. Exiting.[/yellow]"
-                        if RICH_AVAILABLE
-                        else "No folder entered. Exiting."
-                    )
+                    console.print("[yellow]No folder entered. Exiting.[/yellow]")
                     return None
         else:
             candidate = read_edopro_path_from_console()
             if not candidate:
-                console.print(
-                    "[yellow]No folder entered. Exiting.[/yellow]"
-                    if RICH_AVAILABLE
-                    else "No folder entered. Exiting."
-                )
+                console.print("[yellow]No folder entered. Exiting.[/yellow]")
                 return None
 
         dbs = get_db_files(candidate)
@@ -296,21 +302,17 @@ def prompt_for_edopro_path(cfg: Config) -> list[str] | None:
             saved = cfg.set_edopro_path(candidate, save=True)
             console.print(
                 f"[green]Using EDOPro folder:[/green] [bold]{cfg.edopro_path}[/bold]"
-                if RICH_AVAILABLE
-                else f"Using EDOPro folder: {cfg.edopro_path}"
             )
             if not saved:
                 console.print(
-                    f"[yellow]Could not save settings to {os.path.abspath(cfg.config_path)}.[/yellow]"
-                    if RICH_AVAILABLE
-                    else f"Could not save settings to {os.path.abspath(cfg.config_path)}."
+                    f"[yellow]Could not save settings to "
+                    f"{os.path.abspath(cfg.config_path)}.[/yellow]"
                 )
             return dbs
 
         console.print(
-            "[yellow]That folder does not look like EDOPro. It needs cards.cdb, expansions/*.cdb, or repositories/**/*.delta.cdb.[/yellow]"
-            if RICH_AVAILABLE
-            else "That folder does not look like EDOPro. It needs cards.cdb, expansions/*.cdb, or repositories/**/*.delta.cdb."
+            "[yellow]That folder does not look like EDOPro. It needs cards.cdb, "
+            "expansions/*.cdb, or repositories/**/*.delta.cdb.[/yellow]"
         )
 
 
@@ -348,11 +350,7 @@ def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, list[
                     if card_id not in official_ids:
                         official_ids.append(card_id)
         except sqlite3.Error as exc:
-            console.print(
-                f"[yellow]Error reading {db}: {exc}[/yellow]"
-                if RICH_AVAILABLE
-                else f"Error reading {db}: {exc}"
-            )
+            console.print(f"[yellow]Error reading {db}: {exc}[/yellow]")
         finally:
             if conn is not None:
                 conn.close()
@@ -389,23 +387,29 @@ def find_official_match(
                 if not quiet:
                     console.print(
                         f'[dim]Pre-Errata lookup miss: "{clean}" (from "{name}")[/dim]'
-                        if RICH_AVAILABLE
-                        else f'Pre-Errata lookup miss: "{clean}" (from "{name}")'
                     )
 
     return name_to_official.get(name, []), pre_errata_miss, False
 
 
 def load_manual_map(path: str) -> dict[str, str]:
-    """Load built-in overrides, merged with the optional manual_map.json file."""
+    """Load built-in overrides, merged with the optional manual_map.json file.
+
+    Keys beginning with "_" are treated as inline documentation and skipped, so
+    users can keep comment fields in the JSON without polluting the override map.
+    """
     result = dict(BUILTIN_MANUAL_MAP)
     if not os.path.exists(path):
         return result
     try:
-        with open(path, "r", encoding="utf-8") as file_obj:
-            result.update(json.load(file_obj))
+        with open(path, encoding="utf-8") as file_obj:
+            raw = json.load(file_obj)
     except (json.JSONDecodeError, OSError):
-        pass
+        return result
+    if isinstance(raw, dict):
+        result.update(
+            {k: v for k, v in raw.items() if isinstance(k, str) and not k.startswith("_")}
+        )
     return result
 
 
@@ -423,6 +427,7 @@ class DownloadStats:
         self.skipped = 0
         self.failed = 0
         self.failed_cards: list[tuple[int, str]] = []
+        self.unexpected_errors: list[tuple[int, str, str]] = []
         self._rush_ids: set[int] = rush_ids or set()
 
     @property
@@ -459,6 +464,9 @@ class DownloadStats:
         self.failed += 1
         self.failed_cards.append((card_id, name))
 
+    def record_unexpected_error(self, card_id: int, name: str, exc: BaseException) -> None:
+        self.unexpected_errors.append((card_id, name, f"{type(exc).__name__}: {exc}"))
+
 
 async def _try_download(
     session: aiohttp.ClientSession,
@@ -471,6 +479,7 @@ async def _try_download(
     Attempt to GET `url` and save to `filepath`.
     Retries up to `max_retries` times with exponential backoff.
     """
+    tmp_path = f"{filepath}.part"
     for attempt in range(1, max_retries + 1):
         try:
             async with session.get(url, timeout=timeout) as resp:
@@ -480,25 +489,30 @@ async def _try_download(
                         if attempt >= max_retries:
                             return False
                     else:
-                        with open(filepath, "wb") as file_obj:
+                        with open(tmp_path, "wb") as file_obj:
                             file_obj.write(content)
+                        os.replace(tmp_path, filepath)
                         return True
                 elif resp.status == 404:
                     return False
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+        except (TimeoutError, aiohttp.ClientError):
             pass
         except OSError as exc:
-            console.print(
-                f"[red]Cannot write to {filepath}: {exc}[/red]"
-                if RICH_AVAILABLE
-                else f"Cannot write to {filepath}: {exc}"
-            )
+            console.print(f"[red]Cannot write to {filepath}: {exc}[/red]")
+            _remove_quietly(tmp_path)
             return False
 
         if attempt < max_retries:
             await asyncio.sleep(2 ** (attempt - 1))
 
+    _remove_quietly(tmp_path)
     return False
+
+
+def _remove_quietly(path: str) -> None:
+    """Delete a file if present, swallowing any errors."""
+    with contextlib.suppress(OSError):
+        os.remove(path)
 
 
 async def download_card(
@@ -551,11 +565,7 @@ async def download_card(
 
     if cfg.dry_run:
         tag = candidates[0][0] if candidates else "fallback"
-        console.print(
-            f"  [dim]Would download:[/dim] {name} ({card_id}) [{tag}]"
-            if RICH_AVAILABLE
-            else f"  Would download: {name} ({card_id}) [{tag}]"
-        )
+        console.print(f"  [dim]Would download:[/dim] {name} ({card_id}) via {tag}")
         if progress and task_id is not None:
             progress.advance(task_id)
         return
@@ -657,17 +667,9 @@ def _write_report(stats: DownloadStats, cfg: Config, runtime_seconds: float) -> 
                         f.write(f"  {card_id}\t{card_name}\n")
             else:
                 f.write("\nAll cards downloaded successfully.\n")
-        console.print(
-            f"[dim]Report saved to: {report_path}[/dim]"
-            if RICH_AVAILABLE
-            else f"Report saved to: {report_path}"
-        )
+        console.print(f"[dim]Report saved to: {report_path}[/dim]")
     except OSError as exc:
-        console.print(
-            f"[yellow]Could not write sync report: {exc}[/yellow]"
-            if RICH_AVAILABLE
-            else f"Could not write sync report: {exc}"
-        )
+        console.print(f"[yellow]Could not write sync report: {exc}[/yellow]")
 
 
 def print_summary(
@@ -678,24 +680,15 @@ def print_summary(
     rows = _build_summary_rows(stats, cfg, runtime_seconds)
     label_width = max(len(label) for label, _, _ in rows)
 
-    if RICH_AVAILABLE:
-        console.print()
-        console.rule("[bold]Sync Complete[/bold]")
-        for label, value, style in rows:
-            formatted = f"{value:>12}"
-            if style:
-                console.print(f"  {label:<{label_width}} [{style}]{formatted}[/{style}]")
-            else:
-                console.print(f"  {label:<{label_width}} {formatted}")
-        console.rule()
-    else:
-        sep = "-" * 38
-        print(f"\n{sep}")
-        print("  Sync Complete")
-        print(sep)
-        for label, value, _ in rows:
-            print(f"  {label:<{label_width}} {value:>12}")
-        print(sep)
+    console.print()
+    console.rule("[bold]Sync Complete[/bold]")
+    for label, value, style in rows:
+        formatted = f"{value:>12}"
+        if style:
+            console.print(f"  {label:<{label_width}} [{style}]{formatted}[/{style}]")
+        else:
+            console.print(f"  {label:<{label_width}} {formatted}")
+    console.rule()
 
     if cfg.dry_run:
         return
@@ -758,42 +751,27 @@ def run_health_check(cfg: Config) -> bool:
         "Summoned Skull (Pre-Errata): flags pre-errata miss when base is absent",
     ))
 
-    if RICH_AVAILABLE:
-        console.print()
-        console.rule("[bold]Health Check[/bold]")
-    else:
-        console.print("\nHealth Check")
+    console.print()
+    console.rule("[bold]Health Check[/bold]")
 
     for passed, label in checks:
-        prefix = "[green]OK[/green]" if passed and RICH_AVAILABLE else (
-            "[red]FAIL[/red]" if RICH_AVAILABLE else ("OK" if passed else "FAIL")
-        )
+        prefix = "[green]OK[/green]" if passed else "[red]FAIL[/red]"
         console.print(f"  {prefix} {label}")
 
     passed = all(ok for ok, _ in checks)
-    console.print(
-        "\n[bold green]All checks passed.[/bold green]"
-        if passed and RICH_AVAILABLE
-        else (
-            "\nAll checks passed."
-            if passed
-            else (
-                "\n[bold red]Health check failed — please review the messages above.[/bold red]"
-                if RICH_AVAILABLE
-                else "\nHealth check failed - please review the messages above."
-            )
+    if passed:
+        console.print("\n[bold green]All checks passed.[/bold green]")
+    else:
+        console.print(
+            "\n[bold red]Health check failed — please review the messages above.[/bold red]"
         )
-    )
     return passed
 
 
 async def run(cfg: Config):
     started_at = perf_counter()
 
-    if RICH_AVAILABLE:
-        console.print(f"[bold cyan]EDOPro HD Sync[/bold cyan] [dim]v{VERSION}[/dim]")
-    else:
-        console.print(f"EDOPro HD Sync v{VERSION}")
+    console.print(f"[bold cyan]EDOPro HD Sync[/bold cyan] [dim]v{VERSION}[/dim]")
 
     if cfg.health_check:
         if not run_health_check(cfg):
@@ -810,11 +788,17 @@ async def run(cfg: Config):
 
     id_to_name, name_to_official, rush_ids = scan_databases(dbs)
     manual_map = load_manual_map(cfg.manual_map_file)
-    console.print(
-        f"[dim]Indexed {len(id_to_name):,} cards[/dim]"
-        if RICH_AVAILABLE
-        else f"Indexed {len(id_to_name):,} cards"
+    console.print(f"[dim]Indexed {len(id_to_name):,} cards[/dim]")
+
+    has_non_empty_db = any(
+        os.path.isfile(db) and os.path.getsize(db) > 0 for db in dbs
     )
+    if has_non_empty_db and not id_to_name:
+        console.print(
+            "[bold red]No cards found in the scanned databases. "
+            "They may be corrupt or in an unexpected schema.[/bold red]"
+        )
+        raise SystemExit(1)
 
     if cfg.force:
         missing_ids = list(id_to_name.keys())
@@ -826,17 +810,12 @@ async def run(cfg: Config):
         ]
 
     if not missing_ids:
-        console.print(
-            "\n[bold green]All synced — nothing to download![/bold green]"
-            if RICH_AVAILABLE
-            else "\nAll synced — nothing to download!"
-        )
+        console.print("\n[bold green]All synced — nothing to download![/bold green]")
         return
 
     console.print(
-        f"\n[bold yellow]This will download all {len(missing_ids):,} card images.[/bold yellow]"
-        if RICH_AVAILABLE
-        else f"\nThis will download all {len(missing_ids):,} card images."
+        f"\n[bold yellow]This will download all {len(missing_ids):,} "
+        "card images.[/bold yellow]"
     )
 
     # Ask about saving a report before starting (unless --save-report or --quiet).
@@ -862,30 +841,29 @@ async def run(cfg: Config):
     ssl_ctx = ssl.create_default_context(cafile=certifi.where())
     connector = aiohttp.TCPConnector(
         limit=cfg.concurrency,
+        limit_per_host=min(cfg.concurrency, 25),
         enable_cleanup_closed=True,
         ssl=ssl_ctx,
     )
 
     async with aiohttp.ClientSession(connector=connector) as session:
-        try:
-            test_timeout = aiohttp.ClientTimeout(total=8)
-            async with session.get(
-                f"{cfg.sources['official']}/46986414.jpg",
-                timeout=test_timeout,
-            ) as resp:
-                if resp.status != 200:
-                    console.print(
-                        f"[yellow]Image server returned HTTP {resp.status} — downloads may fail[/yellow]"
-                        if RICH_AVAILABLE
-                        else f"Image server returned HTTP {resp.status}"
-                    )
-        except Exception as exc:
-            console.print(
-                f"[bold red]Cannot reach image server: {exc}\n"
-                "  Check your internet connection.[/bold red]"
-                if RICH_AVAILABLE
-                else f"Cannot reach image server: {exc}"
-            )
+        if not cfg.dry_run:
+            try:
+                test_timeout = aiohttp.ClientTimeout(total=8)
+                async with session.get(
+                    f"{cfg.sources['official']}/46986414.jpg",
+                    timeout=test_timeout,
+                ) as resp:
+                    if resp.status != 200:
+                        console.print(
+                            f"[yellow]Image server returned HTTP {resp.status} — "
+                            "downloads may fail[/yellow]"
+                        )
+            except Exception as exc:
+                console.print(
+                    f"[bold red]Cannot reach image server: {exc}\n"
+                    "  Check your internet connection.[/bold red]"
+                )
 
         def make_worker(progress=None, task_id=None):
             async def worker():
@@ -896,19 +874,27 @@ async def run(cfg: Config):
                         return
                     name = id_to_name[card_id]
                     official, manual, is_pre_errata_miss, is_suffix_match = card_match_info[card_id]
-                    await download_card(
-                        session,
-                        card_id,
-                        name,
-                        official,
-                        manual,
-                        is_pre_errata_miss,
-                        is_suffix_match,
-                        cfg,
-                        stats,
-                        progress,
-                        task_id,
-                    )
+                    try:
+                        await download_card(
+                            session,
+                            card_id,
+                            name,
+                            official,
+                            manual,
+                            is_pre_errata_miss,
+                            is_suffix_match,
+                            cfg,
+                            stats,
+                            progress,
+                            task_id,
+                        )
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        stats.record_failure(card_id, name)
+                        stats.record_unexpected_error(card_id, name, exc)
+                        if progress and task_id is not None:
+                            progress.advance(task_id)
 
             return worker
 
@@ -944,10 +930,8 @@ def pause_before_exit(cfg: Config | None) -> None:
     """Wait for Enter before closing when the packaged Windows app finishes."""
     if not should_pause_before_exit(cfg):
         return
-    try:
+    with contextlib.suppress(EOFError):
         input("\nPress Enter to close this window...")
-    except EOFError:
-        pass
 
 
 def _extract_exit_code(code) -> int:
@@ -972,21 +956,13 @@ def main() -> int:
         asyncio.run(run(cfg))
     except KeyboardInterrupt:
         exit_code = 130
-        console.print(
-            "\n[yellow]Interrupted - partial progress is saved.[/yellow]"
-            if RICH_AVAILABLE
-            else "\nInterrupted - partial progress is saved."
-        )
+        console.print("\n[yellow]Interrupted - partial progress is saved.[/yellow]")
     except SystemExit as exc:
         exit_code = _extract_exit_code(exc.code)
     except Exception as exc:
         exit_code = 1
         if getattr(sys, "frozen", False):
-            console.print(
-                f"\n[bold red]Unexpected error:[/bold red] {exc}"
-                if RICH_AVAILABLE
-                else f"\nUnexpected error: {exc}"
-            )
+            console.print(f"\n[bold red]Unexpected error:[/bold red] {exc}")
         else:
             raise
     finally:

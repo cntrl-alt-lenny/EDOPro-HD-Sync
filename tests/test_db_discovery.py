@@ -7,8 +7,7 @@ import main
 
 class DbDiscoveryTests(unittest.TestCase):
     def setUp(self):
-        self.workspace_root = os.getcwd()
-        self.temp_dir = tempfile.TemporaryDirectory(dir=self.workspace_root)
+        self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.edopro_root = self.temp_dir.name
 
