@@ -218,6 +218,36 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run quick offline checks and exit.",
     )
+    p.add_argument(
+        "--recheck-missing",
+        action="store_true",
+        help=(
+            "Ignore the cache of previously-unavailable cards and retry them. "
+            "Useful after a new set is added to YGOProDeck."
+        ),
+    )
+    p.add_argument(
+        "--deck",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help="Only sync cards in this .ydk deck file. Pass multiple times to combine decks.",
+    )
+    p.add_argument(
+        "--decks-folder",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Only sync cards in every .ydk file inside this folder.",
+    )
+    p.add_argument(
+        "--prune",
+        action="store_true",
+        help=(
+            "After the sync, delete .jpg files in pics/ whose card IDs "
+            "are no longer in any scanned database."
+        ),
+    )
     return p
 
 
@@ -309,6 +339,10 @@ class Config:
         )
         self.no_pause: bool = self.cli.no_pause
         self.health_check: bool = self.cli.health_check
+        self.recheck_missing: bool = self.cli.recheck_missing
+        self.deck_paths: list[str] = list(self.cli.deck or [])
+        self.decks_folder: str | None = self.cli.decks_folder
+        self.prune: bool = self.cli.prune
 
     def set_edopro_path(self, edopro_path: str, save: bool = False) -> bool:
         """Update path-derived fields and optionally persist the new folder."""
