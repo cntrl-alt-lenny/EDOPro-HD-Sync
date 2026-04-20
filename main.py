@@ -130,6 +130,51 @@ def format_rate(count: int, seconds: float) -> str:
     return f"{count / seconds:.1f}/s"
 
 
+def _truncate(text: str, max_len: int) -> str:
+    """Clip long card names so the progress bar stays on one line."""
+    return text if len(text) <= max_len else text[: max_len - 1] + "…"
+
+
+LATEST_RELEASE_API = "https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest"
+
+
+def _parse_version(text: str) -> tuple[int, ...]:
+    """Parse a dotted version string into a comparable tuple. Unknowns become (0,)."""
+    cleaned = text.strip().lstrip("v").split("-", 1)[0]
+    parts = cleaned.split(".") if cleaned else []
+    numbers: list[int] = []
+    for part in parts:
+        try:
+            numbers.append(int(part))
+        except ValueError:
+            return (0,)
+    return tuple(numbers) if numbers else (0,)
+
+
+async def check_for_update(session: aiohttp.ClientSession, current: str) -> str | None:
+    """Return the latest release tag if it's newer than `current`, else None.
+
+    Uses a very short timeout and swallows every error so an offline user or a
+    rate-limited GitHub never delays or fails the sync.
+    """
+    if current == "dev":
+        return None
+    try:
+        timeout = aiohttp.ClientTimeout(total=3)
+        async with session.get(LATEST_RELEASE_API, timeout=timeout) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+    except Exception:
+        return None
+    latest = (data or {}).get("tag_name")
+    if not isinstance(latest, str):
+        return None
+    if _parse_version(latest) > _parse_version(current):
+        return latest
+    return None
+
+
 # Database scanning
 
 def get_db_files(edopro_path: str) -> list[str]:
@@ -415,13 +460,134 @@ def load_manual_map(path: str) -> dict[str, str]:
     try:
         with open(path, encoding="utf-8") as file_obj:
             raw = json.load(file_obj)
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError as exc:
+        console.print(
+            f"[yellow]Could not read manual_map.json: {exc}. Using built-in overrides only.[/yellow]"
+        )
+        return result
+    except OSError:
         return result
     if isinstance(raw, dict):
         result.update(
             {k: v for k, v in raw.items() if isinstance(k, str) and not k.startswith("_")}
         )
     return result
+
+
+# Deck file (.ydk) parsing
+
+def parse_ydk(path: str) -> set[int]:
+    """Return the set of card IDs referenced by a .ydk deck file.
+
+    .ydk files are plain text: section headers like `#main`, `#extra`, `!side`
+    and then one integer card ID per line. We ignore everything that isn't a
+    positive integer so comments and blank lines don't throw things off.
+    """
+    ids: set[int] = set()
+    try:
+        with open(path, encoding="utf-8") as f:
+            for raw in f:
+                token = raw.strip()
+                if not token or token[0] in "#!":
+                    continue
+                try:
+                    cid = int(token)
+                except ValueError:
+                    continue
+                if cid > 0:
+                    ids.add(cid)
+    except OSError as exc:
+        console.print(f"[yellow]Could not read {path}: {exc}[/yellow]")
+    return ids
+
+
+def prune_orphan_images(pics_path: str, known_ids: set[int]) -> int:
+    """Delete pics/<id>.jpg for IDs no longer present in any scanned DB. Returns the count."""
+    if not os.path.isdir(pics_path):
+        return 0
+    pruned = 0
+    for entry in os.listdir(pics_path):
+        if not entry.endswith(".jpg"):
+            continue
+        stem = entry[:-4]
+        try:
+            cid = int(stem)
+        except ValueError:
+            continue
+        if cid in known_ids:
+            continue
+        target = os.path.join(pics_path, entry)
+        try:
+            os.remove(target)
+            pruned += 1
+        except OSError:
+            pass
+    return pruned
+
+
+def collect_deck_filter_ids(cfg: Config) -> set[int] | None:
+    """Gather card IDs from every deck path/folder on `cfg`, or None if unused."""
+    if not cfg.deck_paths and not cfg.decks_folder:
+        return None
+    wanted: set[int] = set()
+    paths: list[str] = list(cfg.deck_paths)
+    if cfg.decks_folder:
+        if os.path.isdir(cfg.decks_folder):
+            for entry in sorted(os.listdir(cfg.decks_folder)):
+                if entry.endswith(".ydk"):
+                    paths.append(os.path.join(cfg.decks_folder, entry))
+        else:
+            console.print(
+                f"[yellow]--decks-folder path is not a directory: {cfg.decks_folder}[/yellow]"
+            )
+    for path in paths:
+        wanted |= parse_ydk(path)
+    return wanted
+
+
+# Persistent failure cache
+
+FAILURE_CACHE_FILENAME = "failed_cards.json"
+FAILURE_CACHE_TTL_DAYS = 14
+
+
+def _failure_cache_path(cfg: Config) -> str:
+    return os.path.join(os.path.dirname(cfg.config_path), FAILURE_CACHE_FILENAME)
+
+
+def load_failure_cache(path: str, ttl_days: int = FAILURE_CACHE_TTL_DAYS) -> dict[int, float]:
+    """Return {card_id: last_checked_epoch} for entries still within the TTL window."""
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    cutoff = datetime.now().timestamp() - (ttl_days * 86400)
+    fresh: dict[int, float] = {}
+    for key, value in raw.items():
+        try:
+            cid = int(key)
+            ts = float(value)
+        except (TypeError, ValueError):
+            continue
+        if ts >= cutoff:
+            fresh[cid] = ts
+    return fresh
+
+
+def save_failure_cache(path: str, cache: dict[int, float]) -> None:
+    """Write the cache atomically; swallow errors so a bad disk never fails a sync."""
+    tmp = f"{path}.part"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({str(cid): ts for cid, ts in cache.items()}, f)
+        os.replace(tmp, path)
+    except OSError:
+        _remove_quietly(tmp)
 
 
 # Download logic with retries
@@ -821,28 +987,62 @@ async def run(cfg: Config):
 
     os.makedirs(cfg.pics_path, exist_ok=True)
 
-    id_to_name, name_to_official, rush_ids = scan_databases(dbs)
+    full_id_to_name, name_to_official, rush_ids = scan_databases(dbs)
     manual_map = load_manual_map(cfg.manual_map_file)
-    console.print(f"[dim]Indexed {len(id_to_name):,} cards[/dim]")
+    console.print(f"[dim]Indexed {len(full_id_to_name):,} cards[/dim]")
 
     has_non_empty_db = any(
         os.path.isfile(db) and os.path.getsize(db) > 0 for db in dbs
     )
-    if has_non_empty_db and not id_to_name:
+    if has_non_empty_db and not full_id_to_name:
         console.print(
             "[bold red]No cards found in the scanned databases. "
             "They may be corrupt or in an unexpected schema.[/bold red]"
         )
         raise SystemExit(1)
 
+    deck_filter = collect_deck_filter_ids(cfg)
+    if deck_filter is not None:
+        id_to_name = {
+            cid: name for cid, name in full_id_to_name.items() if cid in deck_filter
+        }
+        missing_from_dbs = deck_filter - full_id_to_name.keys()
+        console.print(
+            f"[dim]Deck filter: {len(id_to_name):,} of {len(deck_filter):,} "
+            "deck cards found in the scanned databases.[/dim]"
+        )
+        if missing_from_dbs:
+            console.print(
+                f"[yellow]{len(missing_from_dbs):,} deck IDs aren't in any .cdb — "
+                "they'll be skipped.[/yellow]"
+            )
+    else:
+        id_to_name = full_id_to_name
+
+    failure_cache_path = _failure_cache_path(cfg)
+    failure_cache = (
+        {}
+        if cfg.recheck_missing or cfg.force
+        else load_failure_cache(failure_cache_path)
+    )
+
     if cfg.force:
         missing_ids = list(id_to_name.keys())
     else:
-        missing_ids = [
-            card_id
-            for card_id in id_to_name
-            if not os.path.exists(os.path.join(cfg.pics_path, f"{card_id}.jpg"))
-        ]
+        missing_ids = []
+        skipped_by_cache = 0
+        for card_id in id_to_name:
+            if os.path.exists(os.path.join(cfg.pics_path, f"{card_id}.jpg")):
+                continue
+            if card_id in failure_cache:
+                skipped_by_cache += 1
+                continue
+            missing_ids.append(card_id)
+        if skipped_by_cache:
+            console.print(
+                f"[dim]Skipped {skipped_by_cache:,} cards cached as unavailable "
+                f"(re-check with --recheck-missing)[/dim]"
+            )
 
     if not missing_ids:
         console.print("\n[bold green]All synced — nothing to download![/bold green]")
@@ -900,6 +1100,13 @@ async def run(cfg: Config):
                     "  Check your internet connection.[/bold red]"
                 )
 
+            latest = await check_for_update(session, VERSION)
+            if latest:
+                console.print(
+                    f"[yellow]A newer version ({latest}) is available — "
+                    "https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest[/yellow]"
+                )
+
         def make_worker(progress=None, task_id=None):
             async def worker():
                 while True:
@@ -909,6 +1116,10 @@ async def run(cfg: Config):
                         return
                     name = id_to_name[card_id]
                     official, manual, is_pre_errata_miss, is_suffix_match = card_match_info[card_id]
+                    if progress and task_id is not None:
+                        progress.update(
+                            task_id, description=f"Syncing {_truncate(name, 40)}"
+                        )
                     try:
                         await download_card(
                             session,
@@ -948,6 +1159,27 @@ async def run(cfg: Config):
         else:
             workers = [make_worker()() for _ in range(cfg.concurrency)]
             await asyncio.gather(*workers)
+
+    if not cfg.dry_run:
+        now_ts = datetime.now().timestamp()
+        for cid, _ in stats.failed_cards:
+            failure_cache[cid] = now_ts
+        # Forget cached entries whose image is on disk now (e.g. after a recheck).
+        for cid in list(failure_cache.keys()):
+            if os.path.exists(os.path.join(cfg.pics_path, f"{cid}.jpg")):
+                del failure_cache[cid]
+        save_failure_cache(failure_cache_path, failure_cache)
+
+    if cfg.prune and not cfg.dry_run:
+        if deck_filter is not None:
+            console.print(
+                "[yellow]Skipping --prune: can't safely prune while --deck "
+                "is active (the DB scan is authoritative, not the deck).[/yellow]"
+            )
+        else:
+            pruned = prune_orphan_images(cfg.pics_path, set(full_id_to_name.keys()))
+            if pruned:
+                console.print(f"[dim]Pruned {pruned:,} orphaned images[/dim]")
 
     print_summary(stats, cfg, perf_counter() - started_at, save_report_after)
 
