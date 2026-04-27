@@ -162,37 +162,19 @@ jobs:
       run: |
         version="${{ steps.release_version.outputs.value }}"
         archive="EDOPro-HD-Sync-Linux-v${version}.zip"
-        wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
-        chmod +x appimagetool
+        bundleDir="dist/EDOPro HD Sync Linux"
 
-        mkdir -p AppDir/usr/bin
-        cp dist/EDOPro-HD-Sync AppDir/usr/bin/
-        chmod +x AppDir/usr/bin/EDOPro-HD-Sync
+        rm -rf "$bundleDir" "dist/$archive"
+        mkdir -p "$bundleDir"
 
-        cat > AppDir/AppRun << 'APPRUN'
-        #!/bin/bash
-        SELF=$(readlink -f "$0")
-        HERE="${SELF%/*}"
-        exec "$HERE/usr/bin/EDOPro-HD-Sync" "$@"
-        APPRUN
-        chmod +x AppDir/AppRun
+        mv dist/EDOPro-HD-Sync "$bundleDir/EDOPro-HD-Sync-Linux"
+        chmod +x "$bundleDir/EDOPro-HD-Sync-Linux"
 
-        cat > AppDir/EDOPro-HD-Sync.desktop << 'DESKTOP'
-        [Desktop Entry]
-        Name=EDOPro HD Sync
-        Exec=EDOPro-HD-Sync
-        Icon=EDOPro-HD-Sync
-        Type=Application
-        Categories=Utility;
-        Terminal=true
-        DESKTOP
+        cp EDOPro-HD-Sync.sh "$bundleDir/EDOPro-HD-Sync.sh"
+        chmod +x "$bundleDir/EDOPro-HD-Sync.sh"
 
-        cp build/app-icon.png AppDir/EDOPro-HD-Sync.png
+        cp release_assets/ReadMe-Linux.txt "$bundleDir/ReadMe.txt"
 
-        APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 ./appimagetool AppDir dist/EDOPro-HD-Sync-Linux.AppImage
-        mkdir -p "dist/EDOPro HD Sync Linux"
-        mv dist/EDOPro-HD-Sync-Linux.AppImage "dist/EDOPro HD Sync Linux/"
-        cp release_assets/ReadMe-Linux.txt "dist/EDOPro HD Sync Linux/ReadMe.txt"
         cd dist && zip -r "$archive" "EDOPro HD Sync Linux"
 
     - name: Determine release file
