@@ -175,6 +175,31 @@ async def check_for_update(session: aiohttp.ClientSession, current: str) -> str 
     return None
 
 
+async def _check_image_server(session: aiohttp.ClientSession, cfg: Config) -> str | None:
+    """Probe the image server once and return a warning message, or None if it looks healthy.
+
+    Returns the message instead of printing it so the caller can run this
+    concurrently with the update check without the two interleaving their output.
+    """
+    try:
+        test_timeout = aiohttp.ClientTimeout(total=8)
+        async with session.get(
+            f"{cfg.sources['official']}/46986414.jpg",
+            timeout=test_timeout,
+        ) as resp:
+            if resp.status != 200:
+                return (
+                    f"[yellow]Image server returned HTTP {resp.status} — "
+                    "downloads may fail[/yellow]"
+                )
+    except Exception as exc:
+        return (
+            f"[bold red]Cannot reach image server: {exc}\n"
+            "  Check your internet connection.[/bold red]"
+        )
+    return None
+
+
 # Database scanning
 
 def get_db_files(edopro_path: str) -> list[str]:
@@ -1094,24 +1119,15 @@ async def run(cfg: Config):
 
     async with aiohttp.ClientSession(connector=connector) as session:
         if not cfg.dry_run:
-            try:
-                test_timeout = aiohttp.ClientTimeout(total=8)
-                async with session.get(
-                    f"{cfg.sources['official']}/46986414.jpg",
-                    timeout=test_timeout,
-                ) as resp:
-                    if resp.status != 200:
-                        console.print(
-                            f"[yellow]Image server returned HTTP {resp.status} — "
-                            "downloads may fail[/yellow]"
-                        )
-            except Exception as exc:
-                console.print(
-                    f"[bold red]Cannot reach image server: {exc}\n"
-                    "  Check your internet connection.[/bold red]"
-                )
-
-            latest = await check_for_update(session, VERSION)
+            # Run the connectivity test and update check at the same time so a
+            # slow connection doesn't add both timeouts back-to-back before the
+            # progress bar appears.
+            server_msg, latest = await asyncio.gather(
+                _check_image_server(session, cfg),
+                check_for_update(session, VERSION),
+            )
+            if server_msg:
+                console.print(server_msg)
             if latest:
                 console.print(
                     f"[yellow]A newer version ({latest}) is available — "

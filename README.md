@@ -45,12 +45,9 @@
 ### Linux
 
 1. Download `EDOPro-HD-Sync-Linux-vVERSION.zip` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
-2. Extract it and open the `EDOPro HD Sync Linux` folder
-3. Make the AppImage executable: `chmod +x EDOPro-HD-Sync-Linux.AppImage`
-4. Run it from your EDOPro folder, or let it prompt you to choose the folder:
-   ```bash
-   cd /path/to/EDOPro && /path/to/EDOPro\ HD\ Sync\ Linux/EDOPro-HD-Sync-Linux.AppImage
-   ```
+2. Unzip into your EDOPro folder and open the `EDOPro HD Sync Linux` folder
+3. Run `./EDOPro-HD-Sync.sh` (double-click in your file manager, or run it from a terminal)
+4. The launcher runs the tool from your EDOPro folder, or prompts you to choose the folder if it can't find one
 5. The bundle includes a Linux `ReadMe.txt`
 
 ### From Source
