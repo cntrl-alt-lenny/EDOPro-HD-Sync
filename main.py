@@ -18,6 +18,7 @@ import sqlite3
 import ssl
 import subprocess
 import sys
+from collections.abc import Callable
 from datetime import datetime
 from time import perf_counter
 
@@ -134,6 +135,9 @@ def _truncate(text: str, max_len: int) -> str:
 
 
 LATEST_RELEASE_API = "https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest"
+TEXTURES_RELEASE_API = (
+    "https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases/tags/textures"
+)
 
 
 def _parse_version(text: str) -> tuple[int, ...]:
@@ -691,6 +695,16 @@ def _looks_like_jpeg(content: bytes) -> bool:
     return len(content) >= MIN_IMAGE_BYTES and content.startswith(JPEG_MAGIC)
 
 
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def _looks_like_image(content: bytes) -> bool:
+    """Return True for a plausibly real PNG or JPEG (used for curated textures)."""
+    return len(content) >= MIN_IMAGE_BYTES and (
+        content.startswith(JPEG_MAGIC) or content.startswith(PNG_MAGIC)
+    )
+
+
 # When a server replies 429 (rate limited) it may send a Retry-After header
 # telling us how many seconds to wait. We honor it, capped so one throttled
 # request can't stall the whole sync. Only the seconds form is parsed; the
@@ -717,10 +731,12 @@ async def _try_download(
     filepath: str,
     timeout: aiohttp.ClientTimeout,
     max_retries: int,
+    is_valid: Callable[[bytes], bool] = _looks_like_jpeg,
 ) -> bool:
     """
     Attempt to GET `url` and save to `filepath`.
     Retries up to `max_retries` times with exponential backoff.
+    `is_valid` decides whether the downloaded bytes are an acceptable image.
     """
     tmp_path = f"{filepath}.part"
     for attempt in range(1, max_retries + 1):
@@ -729,7 +745,7 @@ async def _try_download(
             async with session.get(url, timeout=timeout) as resp:
                 if resp.status == 200:
                     content = await resp.read()
-                    if _looks_like_jpeg(content):
+                    if is_valid(content):
                         with open(tmp_path, "wb") as file_obj:
                             file_obj.write(content)
                         os.replace(tmp_path, filepath)
@@ -837,6 +853,81 @@ async def download_card(
     stats.record_failure(card_id, name)
     if progress and task_id is not None:
         progress.advance(task_id)
+
+
+# Curated textures
+
+
+async def download_curated_textures(session: aiohttp.ClientSession, cfg: Config) -> tuple[int, int]:
+    """Download the curated texture pack into <edopro>/textures/.
+
+    Textures aren't on a card database, so they're published as assets on a
+    dedicated "textures" GitHub release. Returns (downloaded, total_available).
+    """
+    try:
+        timeout = aiohttp.ClientTimeout(total=15)
+        async with session.get(TEXTURES_RELEASE_API, timeout=timeout) as resp:
+            if resp.status == 404:
+                console.print("[yellow]No curated textures have been published yet.[/yellow]")
+                return (0, 0)
+            if resp.status != 200:
+                console.print(
+                    f"[yellow]Could not fetch the curated texture list (HTTP {resp.status}).[/yellow]"
+                )
+                return (0, 0)
+            data = await resp.json()
+    except Exception as exc:
+        console.print(f"[yellow]Could not fetch the curated texture list: {exc}[/yellow]")
+        return (0, 0)
+
+    assets = [
+        a
+        for a in (data or {}).get("assets", [])
+        if isinstance(a, dict)
+        and isinstance(a.get("name"), str)
+        and isinstance(a.get("browser_download_url"), str)
+        and a["name"].lower().endswith((".png", ".jpg", ".jpeg"))
+    ]
+    if not assets:
+        console.print("[yellow]No curated textures have been published yet.[/yellow]")
+        return (0, 0)
+
+    textures_dir = os.path.join(cfg.edopro_path, "textures")
+    os.makedirs(textures_dir, exist_ok=True)
+    # Textures can be large (multi-MB backgrounds), so allow extra time.
+    timeout = aiohttp.ClientTimeout(total=max(cfg.timeout, 120))
+    downloaded = 0
+    for asset in assets:
+        name = os.path.basename(asset["name"])  # guard against odd asset names
+        dest = os.path.join(textures_dir, name)
+        ok = await _try_download(
+            session,
+            asset["browser_download_url"],
+            dest,
+            timeout,
+            cfg.max_retries,
+            is_valid=_looks_like_image,
+        )
+        if ok:
+            downloaded += 1
+            console.print(f"  [dim]downloaded {name}[/dim]")
+        else:
+            console.print(f"  [yellow]could not download {name}[/yellow]")
+    return (downloaded, len(assets))
+
+
+def _resolve_want_textures(cfg: Config, has_cards: bool) -> bool:
+    """Decide whether to download curated textures: explicit flag, or a prompt."""
+    if cfg.textures is not None:
+        return cfg.textures
+    if cfg.dry_run or cfg.quiet:
+        return False
+    question = (
+        "Also download curated textures (custom backgrounds & card sleeves)?"
+        if has_cards
+        else "Download curated textures (custom backgrounds & card sleeves)?"
+    )
+    return _prompt_yes_no(question)
 
 
 # Summary
@@ -1111,18 +1202,20 @@ async def run(cfg: Config):
                 f"(re-check with --recheck-missing)[/dim]"
             )
 
-    if not missing_ids:
-        console.print("\n[bold green]All synced — nothing to download![/bold green]")
-        return
-
-    console.print(
-        f"\n[bold yellow]This will download all {len(missing_ids):,} card images.[/bold yellow]"
-    )
-
-    # Ask about saving a report before starting (unless --save-report or --quiet).
     save_report_after = cfg.save_report
-    if not cfg.dry_run and not cfg.save_report and not cfg.quiet:
-        save_report_after = _prompt_yes_no("Save a sync report when finished?")
+    if missing_ids:
+        console.print(
+            f"\n[bold yellow]This will download all {len(missing_ids):,} card images.[/bold yellow]"
+        )
+        # Ask about saving a report before starting (unless --save-report or --quiet).
+        if not cfg.dry_run and not cfg.save_report and not cfg.quiet:
+            save_report_after = _prompt_yes_no("Save a sync report when finished?")
+        want_textures = _resolve_want_textures(cfg, has_cards=True)
+    else:
+        want_textures = _resolve_want_textures(cfg, has_cards=False)
+        if not want_textures:
+            console.print("\n[bold green]All synced — nothing to download![/bold green]")
+            return
 
     # Pre-compute match info for every card to avoid redundant lookups in workers.
     card_match_info: dict[int, tuple[list[int], str | None, bool, bool]] = {}
@@ -1202,23 +1295,35 @@ async def run(cfg: Config):
 
             return worker
 
-        if RICH_AVAILABLE and not cfg.quiet:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]{task.description}"),
-                BarColumn(bar_width=40),
-                MofNCompleteColumn(),
-                TimeRemainingColumn(),
-                console=console,
-            ) as progress:
-                task_id = progress.add_task("Syncing...", total=len(missing_ids))
-                workers = [make_worker(progress, task_id)() for _ in range(cfg.concurrency)]
+        if missing_ids:
+            if RICH_AVAILABLE and not cfg.quiet:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[bold blue]{task.description}"),
+                    BarColumn(bar_width=40),
+                    MofNCompleteColumn(),
+                    TimeRemainingColumn(),
+                    console=console,
+                ) as progress:
+                    task_id = progress.add_task("Syncing...", total=len(missing_ids))
+                    workers = [make_worker(progress, task_id)() for _ in range(cfg.concurrency)]
+                    await asyncio.gather(*workers)
+            else:
+                workers = [make_worker()() for _ in range(cfg.concurrency)]
                 await asyncio.gather(*workers)
-        else:
-            workers = [make_worker()() for _ in range(cfg.concurrency)]
-            await asyncio.gather(*workers)
 
-    if not cfg.dry_run:
+        if want_textures and not cfg.dry_run:
+            console.print("\n[bold cyan]Downloading curated textures...[/bold cyan]")
+            got, total = await download_curated_textures(session, cfg)
+            if total:
+                console.print(
+                    f"[green]Curated textures: {got}/{total} downloaded[/green] "
+                    f"[dim]-> {os.path.join(cfg.edopro_path, 'textures')}[/dim]"
+                )
+        elif want_textures and cfg.dry_run:
+            console.print("\n[dim]Would download curated textures into textures/[/dim]")
+
+    if missing_ids and not cfg.dry_run:
         now_ts = datetime.now().timestamp()
         for cid, _ in stats.failed_cards:
             failure_cache[cid] = now_ts
@@ -1239,7 +1344,8 @@ async def run(cfg: Config):
             if pruned:
                 console.print(f"[dim]Pruned {pruned:,} orphaned images[/dim]")
 
-    print_summary(stats, cfg, perf_counter() - started_at, save_report_after)
+    if missing_ids:
+        print_summary(stats, cfg, perf_counter() - started_at, save_report_after)
 
 
 def should_pause_before_exit(cfg: Config | None) -> bool:

@@ -255,6 +255,12 @@ def _build_parser() -> argparse.ArgumentParser:
             "are no longer in any scanned database."
         ),
     )
+    p.add_argument(
+        "--textures",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Also download the curated texture pack (backgrounds, card sleeves) into textures/.",
+    )
     return p
 
 
@@ -354,6 +360,11 @@ class Config:
         self.deck_paths: list[str] = list(self.cli.deck or [])
         self.decks_folder: str | None = self.cli.decks_folder
         self.prune: bool = self.cli.prune
+
+        file_textures = file_cfg.get("textures")
+        if not isinstance(file_textures, bool):
+            file_textures = None
+        self.textures: bool | None = _pick_value(self.cli.textures, file_textures, None)
 
     def set_edopro_path(self, edopro_path: str, save: bool = False) -> bool:
         """Update path-derived fields and optionally persist the new folder."""

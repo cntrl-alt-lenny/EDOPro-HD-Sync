@@ -23,6 +23,7 @@
 - **Truthful alternate-art handling** - falls back to ProjectIgnis when YGOProDeck doesn't have the art
 - **Offline health check** - quickly verifies suffix-stripping logic
 - **Simple packaged releases** - ready-to-use downloads for Windows, macOS, and Linux
+- **Curated textures** - optionally fetch a hand-picked set of backgrounds and card sleeves
 
 ## Quick Start
 
@@ -36,11 +37,12 @@
 
 ### macOS
 
-1. Download `EDOPro-HD-Sync-macOS-vVERSION.zip` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
-2. Unzip into your EDOPro folder and open the `EDOPro HD Sync MacOS` folder
-3. Double-click `EDOPro-HD-Sync.command`
-4. If macOS asks about security, go to **System Settings -> Privacy & Security** and allow it
-5. The bundle includes a Mac-specific `ReadMe.txt`
+1. Download the single `EDOPro-HD-Sync.command` file from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
+2. Double-click it
+3. The first time, pick your ProjectIgnis folder (the dialog starts in Applications) — it remembers your choice
+4. If macOS asks the first time, **right-click the file and choose Open** (no System Settings trip needed)
+
+It downloads the app and your HD artwork, then runs. The full `EDOPro-HD-Sync-macOS-vVERSION.zip` bundle (with a Mac `ReadMe.txt`) is also available if you prefer it.
 
 ### Linux
 
@@ -71,6 +73,8 @@ Scans all `.cdb` card databases in your EDOPro folder, tries each card's ID dire
 
 - `python main.py --health-check` runs an offline sanity check for suffix-stripping and Pre-Errata matching
 - `python main.py --dry-run` previews what would be downloaded
+- `python main.py --textures` also downloads the curated texture pack (custom backgrounds and card sleeves) into `textures/` (the packaged app asks about this too)
+- `python main.py --edopro-path "/path/to/ProjectIgnis"` points the tool at a specific folder
 
 ## Contributing
 

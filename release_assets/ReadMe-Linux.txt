@@ -18,6 +18,7 @@ Helpful notes
 - config.json is saved beside the launcher in this folder.
 - The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
 - Multi-art cards (e.g. Ring of Destruction, Rescue Cat) get distinct artwork for each variant automatically.
+- You can also download curated textures (custom backgrounds & card sleeves): answer "y" when the tool asks, or run with --textures.
 - Works on Steam Deck (Desktop Mode), Ubuntu, Fedora, Arch, etc. — anything x86_64 Linux.
 
 Quick sanity check

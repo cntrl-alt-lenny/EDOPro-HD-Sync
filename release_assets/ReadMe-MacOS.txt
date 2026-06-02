@@ -31,6 +31,8 @@ Helpful notes
 - The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
 - Multi-art cards (e.g. Ring of Destruction, Rescue Cat) get distinct artwork
   for each variant automatically.
+- You can also download curated textures (custom backgrounds & card sleeves):
+  answer "y" when the tool asks.
 
 Quick sanity check
 ------------------
