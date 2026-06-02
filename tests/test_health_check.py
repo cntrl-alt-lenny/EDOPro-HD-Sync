@@ -21,8 +21,9 @@ class HealthCheckTests(unittest.TestCase):
         )
 
     def test_run_health_check_passes(self):
-        with mock.patch.object(main.console, "print") as print_mock, mock.patch.object(
-            main.console, "rule"
+        with (
+            mock.patch.object(main.console, "print") as print_mock,
+            mock.patch.object(main.console, "rule"),
         ):
             passed = main.run_health_check(self.cfg)
 

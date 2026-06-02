@@ -45,7 +45,9 @@ class StartupPromptTests(unittest.TestCase):
             json.dump(data, file_obj)
         return config_path
 
-    def make_edopro_dir(self, name: str, *, with_cards: bool = False, with_expansion: bool = False) -> str:
+    def make_edopro_dir(
+        self, name: str, *, with_cards: bool = False, with_expansion: bool = False
+    ) -> str:
         edopro_path = os.path.join(self.test_root, name)
         os.makedirs(edopro_path, exist_ok=True)
         if with_cards:
@@ -62,10 +64,13 @@ class StartupPromptTests(unittest.TestCase):
         valid_path = self.make_edopro_dir("edopro-root", with_cards=True)
         cfg = Config(["--config", config_path, "--quiet"])
 
-        with mock.patch.object(main.sys, "platform", "win32"), mock.patch.object(
-            main,
-            "browse_for_edopro_path",
-            side_effect=[(invalid_path, True), (valid_path, True)],
+        with (
+            mock.patch.object(main.sys, "platform", "win32"),
+            mock.patch.object(
+                main,
+                "browse_for_edopro_path",
+                side_effect=[(invalid_path, True), (valid_path, True)],
+            ),
         ):
             dbs = main.prompt_for_edopro_path(cfg)
 
@@ -81,9 +86,11 @@ class StartupPromptTests(unittest.TestCase):
         valid_path = self.make_edopro_dir("manual-entry", with_cards=True)
         cfg = Config(["--config", config_path, "--quiet"])
 
-        with mock.patch.object(main.sys, "platform", "win32"), mock.patch.object(
-            main, "browse_for_edopro_path", return_value=(None, False)
-        ), mock.patch("builtins.input", return_value=valid_path):
+        with (
+            mock.patch.object(main.sys, "platform", "win32"),
+            mock.patch.object(main, "browse_for_edopro_path", return_value=(None, False)),
+            mock.patch("builtins.input", return_value=valid_path),
+        ):
             dbs = main.prompt_for_edopro_path(cfg)
 
         self.assertEqual(dbs, [os.path.join(valid_path, "cards.cdb")])
@@ -99,14 +106,14 @@ class StartupPromptTests(unittest.TestCase):
             prompt_cfg.set_edopro_path(valid_path, save=True)
             return expected_dbs
 
-        with mock.patch.object(
-            main, "get_db_files", return_value=[]
-        ), mock.patch.object(
-            main, "prompt_for_edopro_path", side_effect=prompt_stub
-        ), mock.patch.object(
-            main, "scan_databases", return_value=({123: "Test Card"}, {}, set())
-        ) as scan_mock, mock.patch.object(main, "load_manual_map", return_value={}), mock.patch.object(
-            main.aiohttp, "ClientSession", FakeSession
+        with (
+            mock.patch.object(main, "get_db_files", return_value=[]),
+            mock.patch.object(main, "prompt_for_edopro_path", side_effect=prompt_stub),
+            mock.patch.object(
+                main, "scan_databases", return_value=({123: "Test Card"}, {}, set())
+            ) as scan_mock,
+            mock.patch.object(main, "load_manual_map", return_value={}),
+            mock.patch.object(main.aiohttp, "ClientSession", FakeSession),
         ):
             asyncio.run(main.run(cfg))
 
@@ -125,19 +132,15 @@ class StartupPromptTests(unittest.TestCase):
 
         cards_db = os.path.join(valid_path, "cards.cdb")
 
-        with mock.patch.object(
-            main, "get_db_files", return_value=[cards_db]
-        ), mock.patch.object(
-            main, "scan_databases", return_value=({}, {}, set())
-        ), mock.patch.object(
-            main, "load_manual_map", return_value={}
+        with (
+            mock.patch.object(main, "get_db_files", return_value=[cards_db]),
+            mock.patch.object(main, "scan_databases", return_value=({}, {}, set())),
+            mock.patch.object(main, "load_manual_map", return_value={}),
         ):
             asyncio.run(main.run(cfg))
 
         # Expect no sync report and an empty pics directory (nothing to download).
-        self.assertFalse(
-            any(f.startswith("sync-report") for f in os.listdir(valid_path))
-        )
+        self.assertFalse(any(f.startswith("sync-report") for f in os.listdir(valid_path)))
         self.assertTrue(os.path.isdir(os.path.join(valid_path, "pics")))
 
     def test_run_exits_non_zero_when_non_empty_dbs_yield_no_cards(self):
@@ -151,13 +154,12 @@ class StartupPromptTests(unittest.TestCase):
         with open(cards_db, "wb") as f:
             f.write(b"not a real sqlite file")
 
-        with mock.patch.object(
-            main, "get_db_files", return_value=[cards_db]
-        ), mock.patch.object(
-            main, "scan_databases", return_value=({}, {}, set())
-        ), mock.patch.object(
-            main, "load_manual_map", return_value={}
-        ), self.assertRaises(SystemExit) as ctx:
+        with (
+            mock.patch.object(main, "get_db_files", return_value=[cards_db]),
+            mock.patch.object(main, "scan_databases", return_value=({}, {}, set())),
+            mock.patch.object(main, "load_manual_map", return_value={}),
+            self.assertRaises(SystemExit) as ctx,
+        ):
             asyncio.run(main.run(cfg))
 
         self.assertEqual(ctx.exception.code, 1)

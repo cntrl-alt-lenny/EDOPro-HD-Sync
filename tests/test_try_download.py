@@ -63,7 +63,9 @@ class TryDownloadTests(unittest.TestCase):
 
     def _run(self, session, max_retries=3):
         return asyncio.run(
-            main._try_download(session, "http://example/x.jpg", self.filepath, self.timeout, max_retries)
+            main._try_download(
+                session, "http://example/x.jpg", self.filepath, self.timeout, max_retries
+            )
         )
 
     def test_writes_file_atomically_on_success(self):
@@ -108,10 +110,12 @@ class TryDownloadTests(unittest.TestCase):
         self.assertEqual(session.calls, 1)
 
     def test_honors_retry_after_on_429(self):
-        session = _FakeSession([
-            (429, b"", {"Retry-After": "5"}),
-            (200, _jpeg_body()),
-        ])
+        session = _FakeSession(
+            [
+                (429, b"", {"Retry-After": "5"}),
+                (200, _jpeg_body()),
+            ]
+        )
 
         result = self._run(session)
 
@@ -121,10 +125,12 @@ class TryDownloadTests(unittest.TestCase):
         self.sleep_mock.assert_awaited_once_with(5.0)
 
     def test_429_without_retry_after_falls_back_to_backoff(self):
-        session = _FakeSession([
-            (429, b""),
-            (200, _jpeg_body()),
-        ])
+        session = _FakeSession(
+            [
+                (429, b""),
+                (200, _jpeg_body()),
+            ]
+        )
 
         result = self._run(session)
 
@@ -134,10 +140,12 @@ class TryDownloadTests(unittest.TestCase):
         self.sleep_mock.assert_awaited_once_with(1)
 
     def test_retry_after_is_capped(self):
-        session = _FakeSession([
-            (429, b"", {"Retry-After": "9999"}),
-            (200, _jpeg_body()),
-        ])
+        session = _FakeSession(
+            [
+                (429, b"", {"Retry-After": "9999"}),
+                (200, _jpeg_body()),
+            ]
+        )
 
         result = self._run(session)
 
@@ -145,10 +153,12 @@ class TryDownloadTests(unittest.TestCase):
         self.sleep_mock.assert_awaited_once_with(main.RETRY_AFTER_CAP_SECONDS)
 
     def test_retries_transient_client_error_then_succeeds(self):
-        session = _FakeSession([
-            aiohttp.ClientConnectionError("boom"),
-            (200, _jpeg_body()),
-        ])
+        session = _FakeSession(
+            [
+                aiohttp.ClientConnectionError("boom"),
+                (200, _jpeg_body()),
+            ]
+        )
 
         result = self._run(session)
 
@@ -156,11 +166,13 @@ class TryDownloadTests(unittest.TestCase):
         self.assertEqual(session.calls, 2)
 
     def test_gives_up_after_max_retries(self):
-        session = _FakeSession([
-            TimeoutError(),
-            TimeoutError(),
-            TimeoutError(),
-        ])
+        session = _FakeSession(
+            [
+                TimeoutError(),
+                TimeoutError(),
+                TimeoutError(),
+            ]
+        )
 
         result = self._run(session)
 

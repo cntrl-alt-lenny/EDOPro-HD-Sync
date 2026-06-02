@@ -12,11 +12,14 @@ class CompletedProcessStub:
 
 class WindowsFolderPickerTests(unittest.TestCase):
     def test_powershell_picker_returns_selected_folder(self):
-        with mock.patch.object(main.sys, "platform", "win32"), mock.patch.object(
-            main.subprocess,
-            "run",
-            return_value=CompletedProcessStub(0, 'C:\\Users\\leona\\Games\\ProjectIgnis\n'),
-        ) as run_mock:
+        with (
+            mock.patch.object(main.sys, "platform", "win32"),
+            mock.patch.object(
+                main.subprocess,
+                "run",
+                return_value=CompletedProcessStub(0, "C:\\Users\\leona\\Games\\ProjectIgnis\n"),
+            ) as run_mock,
+        ):
             path, used_dialog = main.browse_for_edopro_path_with_powershell("C:\\")
 
         self.assertTrue(used_dialog)
@@ -26,10 +29,13 @@ class WindowsFolderPickerTests(unittest.TestCase):
         self.assertIn("-STA", command)
 
     def test_powershell_picker_reports_cancelled_dialog(self):
-        with mock.patch.object(main.sys, "platform", "win32"), mock.patch.object(
-            main.subprocess,
-            "run",
-            return_value=CompletedProcessStub(0, ""),
+        with (
+            mock.patch.object(main.sys, "platform", "win32"),
+            mock.patch.object(
+                main.subprocess,
+                "run",
+                return_value=CompletedProcessStub(0, ""),
+            ),
         ):
             path, used_dialog = main.browse_for_edopro_path_with_powershell("C:\\")
 

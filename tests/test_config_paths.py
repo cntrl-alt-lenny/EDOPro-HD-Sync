@@ -33,8 +33,9 @@ class ConfigPathTests(unittest.TestCase):
         os.makedirs(frozen_dir, exist_ok=True)
         fake_executable = os.path.join(frozen_dir, "EDOPro-HD-Sync.exe")
 
-        with mock.patch.object(config_module.sys, "executable", fake_executable), mock.patch.object(
-            config_module.sys, "frozen", True, create=True
+        with (
+            mock.patch.object(config_module.sys, "executable", fake_executable),
+            mock.patch.object(config_module.sys, "frozen", True, create=True),
         ):
             cfg = Config([])
 
@@ -61,8 +62,9 @@ class ConfigPathTests(unittest.TestCase):
         edopro_path = os.path.join(self.test_root, "ProjectIgnis")
         os.makedirs(edopro_path, exist_ok=True)
 
-        with mock.patch.object(config_module.sys, "executable", fake_executable), mock.patch.object(
-            config_module.sys, "frozen", True, create=True
+        with (
+            mock.patch.object(config_module.sys, "executable", fake_executable),
+            mock.patch.object(config_module.sys, "frozen", True, create=True),
         ):
             cfg = Config([])
             saved = cfg.set_edopro_path(edopro_path, save=True)
@@ -105,8 +107,9 @@ class ConfigPathTests(unittest.TestCase):
         open(os.path.join(edopro_root, "EDOPro.exe"), "wb").close()
         fake_executable = os.path.join(tool_dir, "EDOPro-HD-Sync.exe")
 
-        with mock.patch.object(config_module.sys, "executable", fake_executable), mock.patch.object(
-            config_module.sys, "frozen", True, create=True
+        with (
+            mock.patch.object(config_module.sys, "executable", fake_executable),
+            mock.patch.object(config_module.sys, "frozen", True, create=True),
         ):
             cfg = Config([])
 

@@ -84,9 +84,7 @@ else:
         def print(*args, **kwargs):
             kwargs.pop("style", None)
             kwargs.pop("highlight", None)
-            stripped = tuple(
-                _strip_markup(arg) if isinstance(arg, str) else arg for arg in args
-            )
+            stripped = tuple(_strip_markup(arg) if isinstance(arg, str) else arg for arg in args)
             print(*stripped, **kwargs)
 
         @staticmethod
@@ -202,6 +200,7 @@ async def _check_image_server(session: aiohttp.ClientSession, cfg: Config) -> st
 
 # Database scanning
 
+
 def get_db_files(edopro_path: str) -> list[str]:
     """Find card DBs in the EDOPro root, expansions/, and repository delta folders."""
     dbs: list[str] = []
@@ -229,9 +228,7 @@ def normalize_edopro_path(path: str) -> str:
     """Trim quotes and expand user input into an absolute folder path."""
     cleaned = path.strip().strip('"')
     if sys.platform == "win32" and (
-        cleaned.startswith("\\\\")
-        or (len(cleaned) >= 2 and cleaned[1] == ":")
-        or "\\" in cleaned
+        cleaned.startswith("\\\\") or (len(cleaned) >= 2 and cleaned[1] == ":") or "\\" in cleaned
     ):
         return ntpath.abspath(ntpath.expanduser(cleaned))
     return os.path.abspath(os.path.expanduser(cleaned))
@@ -370,9 +367,7 @@ def prompt_for_edopro_path(cfg: Config) -> list[str] | None:
         dbs = get_db_files(candidate)
         if dbs:
             saved = cfg.set_edopro_path(candidate, save=True)
-            console.print(
-                f"[green]Using EDOPro folder:[/green] [bold]{cfg.edopro_path}[/bold]"
-            )
+            console.print(f"[green]Using EDOPro folder:[/green] [bold]{cfg.edopro_path}[/bold]")
             if not saved:
                 console.print(
                     f"[yellow]Could not save settings to "
@@ -407,9 +402,7 @@ def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, list[
         try:
             conn = sqlite3.connect(db)
             cursor = conn.execute(
-                "SELECT d.id, t.name "
-                "FROM datas d INNER JOIN texts t ON d.id = t.id "
-                "ORDER BY d.id"
+                "SELECT d.id, t.name FROM datas d INNER JOIN texts t ON d.id = t.id ORDER BY d.id"
             )
             for card_id, name in cursor.fetchall():
                 id_to_name[card_id] = name
@@ -433,6 +426,7 @@ def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, list[
 
 # Name matching
 
+
 def find_official_match(
     name: str,
     name_to_official: dict[str, list[int]],
@@ -455,9 +449,7 @@ def find_official_match(
             if "Pre-Errata" in suffix:
                 pre_errata_miss = True
                 if not quiet:
-                    console.print(
-                        f'[dim]Pre-Errata lookup miss: "{clean}" (from "{name}")[/dim]'
-                    )
+                    console.print(f'[dim]Pre-Errata lookup miss: "{clean}" (from "{name}")[/dim]')
 
     return name_to_official.get(name, []), pre_errata_miss, False
 
@@ -500,6 +492,7 @@ def load_manual_map(path: str) -> dict[str, str]:
 
 
 # Deck file (.ydk) parsing
+
 
 def parse_ydk(path: str) -> set[int]:
     """Return the set of card IDs referenced by a .ydk deck file.
@@ -617,6 +610,7 @@ def save_failure_cache(path: str, cache: dict[int, float]) -> None:
 
 # Download logic with retries
 
+
 class DownloadStats:
     """Counters for the current sync run."""
 
@@ -643,8 +637,7 @@ class DownloadStats:
     @property
     def unofficial_failures(self) -> int:
         return sum(
-            1 for cid, _ in self.failed_cards
-            if cid >= 100_000_000 and cid not in self._rush_ids
+            1 for cid, _ in self.failed_cards if cid >= 100_000_000 and cid not in self._rush_ids
         )
 
     @property
@@ -657,20 +650,18 @@ class DownloadStats:
         keeps the 'Official' bucket focused on genuine coverage gaps.
         """
         return [
-            (cid, name) for cid, name in self.failed_cards
-            if cid < 100_000_000
-            and cid not in self._rush_ids
-            and _is_token_name(name)
+            (cid, name)
+            for cid, name in self.failed_cards
+            if cid < 100_000_000 and cid not in self._rush_ids and _is_token_name(name)
         ]
 
     @property
     def official_failures(self) -> list[tuple[int, str]]:
         """Official non-Rush, non-token cards that failed — these are actual problems."""
         return [
-            (cid, name) for cid, name in self.failed_cards
-            if cid < 100_000_000
-            and cid not in self._rush_ids
-            and not _is_token_name(name)
+            (cid, name)
+            for cid, name in self.failed_cards
+            if cid < 100_000_000 and cid not in self._rush_ids and not _is_token_name(name)
         ]
 
     def record_success(self, card_id: int, counter_name: str) -> None:
@@ -850,8 +841,11 @@ async def download_card(
 
 # Summary
 
+
 def _build_summary_rows(
-    stats: DownloadStats, cfg: Config, runtime_seconds: float,
+    stats: DownloadStats,
+    cfg: Config,
+    runtime_seconds: float,
 ) -> list[tuple[str, str, str | None]]:
     """Build the rows shown in the terminal summary."""
     rows: list[tuple[str, str, str | None]] = []
@@ -889,7 +883,8 @@ def _write_report(stats: DownloadStats, cfg: Config, runtime_seconds: float) -> 
     now = datetime.now()
     timestamp = now.strftime("%Y%m%d-%H%M%S")
     report_path = os.path.join(
-        os.path.dirname(cfg.config_path), f"sync-report-{timestamp}.txt",
+        os.path.dirname(cfg.config_path),
+        f"sync-report-{timestamp}.txt",
     )
     try:
         with open(report_path, "w", encoding="utf-8") as f:
@@ -922,9 +917,7 @@ def _write_report(stats: DownloadStats, cfg: Config, runtime_seconds: float) -> 
                     f.write(f"  Tokens / placeholders: {len(tokens):,}\n")
                 if official:
                     f.write(f"  Official cards:        {len(official):,}\n")
-                    f.write(
-                        "\nOfficial cards that could not be found:\n"
-                    )
+                    f.write("\nOfficial cards that could not be found:\n")
                     f.write("-" * 60 + "\n")
                     for card_id, card_name in official:
                         f.write(f"  {card_id}\t{card_name}\n")
@@ -936,7 +929,9 @@ def _write_report(stats: DownloadStats, cfg: Config, runtime_seconds: float) -> 
 
 
 def print_summary(
-    stats: DownloadStats, cfg: Config, runtime_seconds: float,
+    stats: DownloadStats,
+    cfg: Config,
+    runtime_seconds: float,
     save_report: bool = False,
 ):
     """Print a clean terminal summary and optionally save a report."""
@@ -961,6 +956,7 @@ def print_summary(
 
 
 # Main
+
 
 def _prompt_yes_no(question: str, default: bool = False) -> bool:
     """Prompt for a yes/no answer, returning the default on blank input."""
@@ -989,30 +985,45 @@ def run_health_check(cfg: Config) -> bool:
 
     # Check that suffix stripping resolves Pre-Errata cards to their base
     official_ids, is_pre_errata_miss, is_suffix_match = find_official_match(
-        "Dark Magician (Pre-Errata)", name_to_official, suffixes, quiet=True,
+        "Dark Magician (Pre-Errata)",
+        name_to_official,
+        suffixes,
+        quiet=True,
     )
-    checks.append((
-        46986414 in official_ids and not is_pre_errata_miss and is_suffix_match,
-        "Dark Magician (Pre-Errata): suffix stripping resolves to base art",
-    ))
+    checks.append(
+        (
+            46986414 in official_ids and not is_pre_errata_miss and is_suffix_match,
+            "Dark Magician (Pre-Errata): suffix stripping resolves to base art",
+        )
+    )
 
     # Check that GOAT suffix stripping works
     official_ids, is_pre_errata_miss, is_suffix_match = find_official_match(
-        "Blue-Eyes White Dragon GOAT", name_to_official, suffixes, quiet=True,
+        "Blue-Eyes White Dragon GOAT",
+        name_to_official,
+        suffixes,
+        quiet=True,
     )
-    checks.append((
-        89631136 in official_ids and not is_pre_errata_miss and is_suffix_match,
-        "Blue-Eyes White Dragon GOAT: suffix stripping resolves to base art",
-    ))
+    checks.append(
+        (
+            89631136 in official_ids and not is_pre_errata_miss and is_suffix_match,
+            "Blue-Eyes White Dragon GOAT: suffix stripping resolves to base art",
+        )
+    )
 
     # Check that Pre-Errata miss is flagged when base name is absent
     official_ids, is_pre_errata_miss, is_suffix_match = find_official_match(
-        "Summoned Skull (Pre-Errata)", name_to_official, suffixes, quiet=True,
+        "Summoned Skull (Pre-Errata)",
+        name_to_official,
+        suffixes,
+        quiet=True,
     )
-    checks.append((
-        is_pre_errata_miss and not is_suffix_match,
-        "Summoned Skull (Pre-Errata): flags pre-errata miss when base is absent",
-    ))
+    checks.append(
+        (
+            is_pre_errata_miss and not is_suffix_match,
+            "Summoned Skull (Pre-Errata): flags pre-errata miss when base is absent",
+        )
+    )
 
     console.print()
     console.rule("[bold]Health Check[/bold]")
@@ -1053,9 +1064,7 @@ async def run(cfg: Config):
     manual_map = load_manual_map(cfg.manual_map_file)
     console.print(f"[dim]Indexed {len(full_id_to_name):,} cards[/dim]")
 
-    has_non_empty_db = any(
-        os.path.isfile(db) and os.path.getsize(db) > 0 for db in dbs
-    )
+    has_non_empty_db = any(os.path.isfile(db) and os.path.getsize(db) > 0 for db in dbs)
     if has_non_empty_db and not full_id_to_name:
         console.print(
             "[bold red]No cards found in the scanned databases. "
@@ -1065,9 +1074,7 @@ async def run(cfg: Config):
 
     deck_filter = collect_deck_filter_ids(cfg)
     if deck_filter is not None:
-        id_to_name = {
-            cid: name for cid, name in full_id_to_name.items() if cid in deck_filter
-        }
+        id_to_name = {cid: name for cid, name in full_id_to_name.items() if cid in deck_filter}
         missing_from_dbs = deck_filter - full_id_to_name.keys()
         console.print(
             f"[dim]Deck filter: {len(id_to_name):,} of {len(deck_filter):,} "
@@ -1083,9 +1090,7 @@ async def run(cfg: Config):
 
     failure_cache_path = _failure_cache_path(cfg)
     failure_cache = (
-        {}
-        if cfg.recheck_missing or cfg.force
-        else load_failure_cache(failure_cache_path)
+        {} if cfg.recheck_missing or cfg.force else load_failure_cache(failure_cache_path)
     )
 
     if cfg.force:
@@ -1111,8 +1116,7 @@ async def run(cfg: Config):
         return
 
     console.print(
-        f"\n[bold yellow]This will download all {len(missing_ids):,} "
-        "card images.[/bold yellow]"
+        f"\n[bold yellow]This will download all {len(missing_ids):,} card images.[/bold yellow]"
     )
 
     # Ask about saving a report before starting (unless --save-report or --quiet).
@@ -1125,7 +1129,10 @@ async def run(cfg: Config):
     for card_id in missing_ids:
         name = id_to_name[card_id]
         official, is_pre_errata_miss, is_suffix_match = find_official_match(
-            name, name_to_official, cfg.suffixes, quiet=True,
+            name,
+            name_to_official,
+            cfg.suffixes,
+            quiet=True,
         )
         manual = manual_map.get(str(card_id))
         card_match_info[card_id] = (official, manual, is_pre_errata_miss, is_suffix_match)
@@ -1170,9 +1177,7 @@ async def run(cfg: Config):
                     name = id_to_name[card_id]
                     official, manual, is_pre_errata_miss, is_suffix_match = card_match_info[card_id]
                     if progress and task_id is not None:
-                        progress.update(
-                            task_id, description=f"Syncing {_truncate(name, 40)}"
-                        )
+                        progress.update(task_id, description=f"Syncing {_truncate(name, 40)}")
                     try:
                         await download_card(
                             session,
@@ -1239,11 +1244,7 @@ async def run(cfg: Config):
 
 def should_pause_before_exit(cfg: Config | None) -> bool:
     """Keep the bundled Windows app open so double-click runs are readable."""
-    return (
-        sys.platform == "win32"
-        and getattr(sys, "frozen", False)
-        and not (cfg and cfg.no_pause)
-    )
+    return sys.platform == "win32" and getattr(sys, "frozen", False) and not (cfg and cfg.no_pause)
 
 
 def pause_before_exit(cfg: Config | None) -> None:

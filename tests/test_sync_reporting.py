@@ -61,9 +61,11 @@ class SyncReportingTests(unittest.TestCase):
         stats.record_failure(12345678, "Missing Artwork Card")
         cfg = self.make_cfg(quiet=True)
 
-        with mock.patch.object(main, "RICH_AVAILABLE", True), mock.patch.object(
-            main.console, "print"
-        ), mock.patch.object(main.console, "rule"):
+        with (
+            mock.patch.object(main, "RICH_AVAILABLE", True),
+            mock.patch.object(main.console, "print"),
+            mock.patch.object(main.console, "rule"),
+        ):
             main.print_summary(stats, cfg, 5.0)
 
         # No report files should be created when save_report is False and quiet is True.
@@ -81,9 +83,12 @@ class SyncReportingTests(unittest.TestCase):
         cfg = self.make_cfg(save_report=True, quiet=True)
         fixed_now = datetime(2026, 3, 12, 14, 5, 6)
 
-        with mock.patch.object(main, "RICH_AVAILABLE", True), mock.patch.object(
-            main.console, "print"
-        ), mock.patch.object(main.console, "rule"), mock.patch.object(main, "datetime") as datetime_mock:
+        with (
+            mock.patch.object(main, "RICH_AVAILABLE", True),
+            mock.patch.object(main.console, "print"),
+            mock.patch.object(main.console, "rule"),
+            mock.patch.object(main, "datetime") as datetime_mock,
+        ):
             datetime_mock.now.return_value = fixed_now
             main.print_summary(stats, cfg, 12.0, save_report=True)
 
@@ -149,9 +154,12 @@ class SyncReportingTests(unittest.TestCase):
         cfg = self.make_cfg(save_report=True, quiet=True)
         fixed_now = datetime(2026, 5, 1, 10, 0, 0)
 
-        with mock.patch.object(main, "RICH_AVAILABLE", True), mock.patch.object(
-            main.console, "print"
-        ), mock.patch.object(main.console, "rule"), mock.patch.object(main, "datetime") as datetime_mock:
+        with (
+            mock.patch.object(main, "RICH_AVAILABLE", True),
+            mock.patch.object(main.console, "print"),
+            mock.patch.object(main.console, "rule"),
+            mock.patch.object(main, "datetime") as datetime_mock,
+        ):
             datetime_mock.now.return_value = fixed_now
             main.print_summary(stats, cfg, 5.0, save_report=True)
 

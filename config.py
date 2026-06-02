@@ -316,9 +316,7 @@ class Config:
         elif file_sources is not None:
             print("Warning: sources must be an object; using defaults.")
         self.sources: dict = sources
-        self.suffixes: list = file_cfg.get(
-            "suffixes_to_strip", DEFAULTS["suffixes_to_strip"]
-        )
+        self.suffixes: list = file_cfg.get("suffixes_to_strip", DEFAULTS["suffixes_to_strip"])
 
         frozen = getattr(sys, "frozen", False)
         self.force: bool = _ensure_bool(
