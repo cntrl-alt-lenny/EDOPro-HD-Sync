@@ -10,6 +10,13 @@ import aiohttp
 
 import main
 
+JPEG_MAGIC = b"\xff\xd8\xff"
+
+
+def _jpeg_body(size: int = 1024) -> bytes:
+    """A payload that passes _looks_like_jpeg: JPEG magic bytes + enough length."""
+    return JPEG_MAGIC + b"\x00" * size
+
 
 class _FakeResponse:
     def __init__(self, status: int, body: bytes):
@@ -58,7 +65,7 @@ class TryDownloadTests(unittest.TestCase):
         )
 
     def test_writes_file_atomically_on_success(self):
-        body = b"x" * 1024
+        body = _jpeg_body()
         session = _FakeSession([(200, body)])
 
         result = self._run(session)
@@ -78,6 +85,18 @@ class TryDownloadTests(unittest.TestCase):
         self.assertFalse(os.path.exists(self.filepath))
         self.assertEqual(session.calls, 3)
 
+    def test_rejects_non_jpeg_payload_with_200(self):
+        # An HTML error page served with HTTP 200 clears the size threshold but
+        # is not a JPEG, so it must be rejected rather than saved as a .jpg.
+        page = b"<html><body>Not Found</body></html>" + b" " * 1024
+        session = _FakeSession([(200, page), (200, page), (200, page)])
+
+        result = self._run(session)
+
+        self.assertFalse(result)
+        self.assertFalse(os.path.exists(self.filepath))
+        self.assertEqual(session.calls, 3)
+
     def test_returns_false_on_404_without_retry(self):
         session = _FakeSession([(404, b"")])
 
@@ -89,7 +108,7 @@ class TryDownloadTests(unittest.TestCase):
     def test_retries_transient_client_error_then_succeeds(self):
         session = _FakeSession([
             aiohttp.ClientConnectionError("boom"),
-            (200, b"y" * 1024),
+            (200, _jpeg_body()),
         ])
 
         result = self._run(session)
@@ -110,7 +129,7 @@ class TryDownloadTests(unittest.TestCase):
         self.assertEqual(session.calls, 3)
 
     def test_cleans_up_partial_file_when_disk_write_fails(self):
-        session = _FakeSession([(200, b"z" * 1024)])
+        session = _FakeSession([(200, _jpeg_body())])
 
         # Point tmp_path at a directory that doesn't exist so open() raises OSError.
         broken_path = os.path.join(self.temp_dir.name, "missing-subdir", "card.jpg")

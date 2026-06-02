@@ -663,6 +663,18 @@ class DownloadStats:
         self.unexpected_errors.append((card_id, name, f"{type(exc).__name__}: {exc}"))
 
 
+# A real card image is a JPEG: it starts with the magic bytes FF D8 FF and is
+# far larger than any error page. Checking both guards against an HTML error
+# page or a truncated response being saved as a .jpg when the server replies 200.
+JPEG_MAGIC = b"\xff\xd8\xff"
+MIN_IMAGE_BYTES = 512
+
+
+def _looks_like_jpeg(content: bytes) -> bool:
+    """Return True when `content` is a plausibly real JPEG image."""
+    return len(content) >= MIN_IMAGE_BYTES and content.startswith(JPEG_MAGIC)
+
+
 async def _try_download(
     session: aiohttp.ClientSession,
     url: str,
@@ -680,14 +692,13 @@ async def _try_download(
             async with session.get(url, timeout=timeout) as resp:
                 if resp.status == 200:
                     content = await resp.read()
-                    if len(content) < 512:
-                        if attempt >= max_retries:
-                            return False
-                    else:
+                    if _looks_like_jpeg(content):
                         with open(tmp_path, "wb") as file_obj:
                             file_obj.write(content)
                         os.replace(tmp_path, filepath)
                         return True
+                    if attempt >= max_retries:
+                        return False
                 elif resp.status == 404:
                     return False
         except (TimeoutError, aiohttp.ClientError):
