@@ -187,6 +187,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="HTTP timeout in seconds (default: 30).",
     )
     p.add_argument(
+        "--edopro-path",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Path to your EDOPro/ProjectIgnis folder (overrides config.json and auto-detection).",
+    )
+    p.add_argument(
         "--config",
         type=str,
         default=None,
@@ -284,11 +291,17 @@ class Config:
         )
         detected_edopro_path = (
             _detect_packaged_edopro_path(self.config_path)
-            if getattr(sys, "frozen", False) and file_cfg.get("edopro_path") is None
+            if getattr(sys, "frozen", False)
+            and self.cli.edopro_path is None
+            and file_cfg.get("edopro_path") is None
             else None
         )
         self.set_edopro_path(
-            file_cfg.get("edopro_path", detected_edopro_path or DEFAULTS["edopro_path"])
+            _pick_value(
+                self.cli.edopro_path,
+                file_cfg.get("edopro_path"),
+                detected_edopro_path or DEFAULTS["edopro_path"],
+            )
         )
 
         self.concurrency: int = _pick_value(

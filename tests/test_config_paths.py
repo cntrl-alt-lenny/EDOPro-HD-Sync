@@ -120,6 +120,17 @@ class ConfigPathTests(unittest.TestCase):
 
         self.assertTrue(cfg.health_check)
 
+    def test_edopro_path_flag_overrides_config_file(self):
+        config_path = os.path.join(self.test_root, "config.json")
+        with open(config_path, "w", encoding="utf-8") as file_obj:
+            json.dump({"edopro_path": os.path.join(self.test_root, "from-config")}, file_obj)
+        cli_path = os.path.join(self.test_root, "from-flag")
+
+        cfg = Config(["--config", config_path, "--edopro-path", cli_path])
+
+        self.assertEqual(cfg.edopro_path, os.path.abspath(cli_path))
+        self.assertEqual(cfg.pics_path, os.path.join(os.path.abspath(cli_path), "pics"))
+
 
 if __name__ == "__main__":
     unittest.main()

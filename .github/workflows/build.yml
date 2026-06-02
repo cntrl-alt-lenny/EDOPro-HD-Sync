@@ -213,3 +213,11 @@ jobs:
         files: |
           ${{ steps.release_file.outputs.path }}
           ${{ steps.checksum.outputs.path }}
+
+    # Attach the launcher on its own so Mac users can grab a single double-clickable
+    # file (it self-downloads the app). The zip bundle above still works too.
+    - name: Attach standalone macOS launcher
+      if: matrix.os == 'macos-latest' && startsWith(github.ref, 'refs/tags/')
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release upload "${GITHUB_REF_NAME}" EDOPro-HD-Sync.command --clobber
