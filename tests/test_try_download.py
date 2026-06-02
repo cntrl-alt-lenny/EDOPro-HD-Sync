@@ -19,9 +19,10 @@ def _jpeg_body(size: int = 1024) -> bytes:
 
 
 class _FakeResponse:
-    def __init__(self, status: int, body: bytes):
+    def __init__(self, status: int, body: bytes, headers: dict | None = None):
         self.status = status
         self._body = body
+        self.headers = headers or {}
 
     async def __aenter__(self):
         return self
@@ -54,8 +55,9 @@ class TryDownloadTests(unittest.TestCase):
         self.addCleanup(self.temp_dir.cleanup)
         self.filepath = os.path.join(self.temp_dir.name, "card.jpg")
         self.timeout = aiohttp.ClientTimeout(total=1)
-        # No real sleeps so tests stay fast.
-        patcher = mock.patch.object(main.asyncio, "sleep", new=mock.AsyncMock(return_value=None))
+        # No real sleeps so tests stay fast; keep a handle to assert on delays.
+        self.sleep_mock = mock.AsyncMock(return_value=None)
+        patcher = mock.patch.object(main.asyncio, "sleep", new=self.sleep_mock)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -104,6 +106,43 @@ class TryDownloadTests(unittest.TestCase):
 
         self.assertFalse(result)
         self.assertEqual(session.calls, 1)
+
+    def test_honors_retry_after_on_429(self):
+        session = _FakeSession([
+            (429, b"", {"Retry-After": "5"}),
+            (200, _jpeg_body()),
+        ])
+
+        result = self._run(session)
+
+        self.assertTrue(result)
+        self.assertEqual(session.calls, 2)
+        # The server's cooldown is honored instead of the exponential backoff.
+        self.sleep_mock.assert_awaited_once_with(5.0)
+
+    def test_429_without_retry_after_falls_back_to_backoff(self):
+        session = _FakeSession([
+            (429, b""),
+            (200, _jpeg_body()),
+        ])
+
+        result = self._run(session)
+
+        self.assertTrue(result)
+        self.assertEqual(session.calls, 2)
+        # No header -> normal first-attempt backoff of 2**0 == 1.
+        self.sleep_mock.assert_awaited_once_with(1)
+
+    def test_retry_after_is_capped(self):
+        session = _FakeSession([
+            (429, b"", {"Retry-After": "9999"}),
+            (200, _jpeg_body()),
+        ])
+
+        result = self._run(session)
+
+        self.assertTrue(result)
+        self.sleep_mock.assert_awaited_once_with(main.RETRY_AFTER_CAP_SECONDS)
 
     def test_retries_transient_client_error_then_succeeds(self):
         session = _FakeSession([

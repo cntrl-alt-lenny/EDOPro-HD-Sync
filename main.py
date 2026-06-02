@@ -700,6 +700,26 @@ def _looks_like_jpeg(content: bytes) -> bool:
     return len(content) >= MIN_IMAGE_BYTES and content.startswith(JPEG_MAGIC)
 
 
+# When a server replies 429 (rate limited) it may send a Retry-After header
+# telling us how many seconds to wait. We honor it, capped so one throttled
+# request can't stall the whole sync. Only the seconds form is parsed; the
+# rarer HTTP-date form falls back to the normal exponential backoff.
+RETRY_AFTER_CAP_SECONDS = 30
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a Retry-After header (seconds form) into a capped delay, or None."""
+    if not value:
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:
+        return None
+    if seconds < 0:
+        return None
+    return min(seconds, RETRY_AFTER_CAP_SECONDS)
+
+
 async def _try_download(
     session: aiohttp.ClientSession,
     url: str,
@@ -713,6 +733,7 @@ async def _try_download(
     """
     tmp_path = f"{filepath}.part"
     for attempt in range(1, max_retries + 1):
+        retry_after: float | None = None
         try:
             async with session.get(url, timeout=timeout) as resp:
                 if resp.status == 200:
@@ -726,6 +747,10 @@ async def _try_download(
                         return False
                 elif resp.status == 404:
                     return False
+                elif resp.status == 429:
+                    # Rate limited — wait the server's requested cooldown (capped)
+                    # before retrying instead of the usual short backoff.
+                    retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
         except (TimeoutError, aiohttp.ClientError):
             pass
         except OSError as exc:
@@ -734,7 +759,8 @@ async def _try_download(
             return False
 
         if attempt < max_retries:
-            await asyncio.sleep(2 ** (attempt - 1))
+            delay = retry_after if retry_after is not None else 2 ** (attempt - 1)
+            await asyncio.sleep(delay)
 
     _remove_quietly(tmp_path)
     return False
