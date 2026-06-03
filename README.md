@@ -29,11 +29,11 @@
 
 ### Windows
 
-1. Download `EDOPro-HD-Sync-Windows-vVERSION.zip` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
-2. Extract the zip and open the `EDOPro HD Sync Windows` folder
-3. Run `EDOPro-HD-Sync.exe`
-4. Pick your EDOPro folder when prompted
-5. The bundle includes a Windows `ReadMe.txt` with the same steps
+1. Download the single `EDOPro-HD-Sync.bat` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
+2. Double-click it
+3. Pick your EDOPro folder when prompted — it remembers your choice
+
+It downloads the app and your HD artwork, then runs. If SmartScreen warns, click **More info → Run anyway**. The full `EDOPro-HD-Sync-Windows-vVERSION.zip` bundle (with a `ReadMe.txt`) is also available.
 
 ### macOS
 
@@ -46,11 +46,11 @@ It downloads the app and your HD artwork, then runs. The full `EDOPro-HD-Sync-ma
 
 ### Linux
 
-1. Download `EDOPro-HD-Sync-Linux-vVERSION.zip` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
-2. Unzip into your EDOPro folder and open the `EDOPro HD Sync Linux` folder
-3. Run `./EDOPro-HD-Sync.sh` (double-click in your file manager, or run it from a terminal)
-4. The launcher runs the tool from your EDOPro folder, or prompts you to choose the folder if it can't find one
-5. The bundle includes a Linux `ReadMe.txt`
+1. Download the single `EDOPro-HD-Sync.sh` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
+2. Run `./EDOPro-HD-Sync.sh` (or double-click and choose "Run")
+3. Pick your ProjectIgnis folder when prompted — it remembers your choice
+
+It downloads the app and your HD artwork, then runs (the folder picker needs `zenity` or `kdialog`). The full `EDOPro-HD-Sync-Linux-vVERSION.zip` bundle (with a `ReadMe.txt`) is also available.
 
 ### From Source
 

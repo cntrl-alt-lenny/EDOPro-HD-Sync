@@ -1,21 +1,26 @@
 EDOPro HD Sync for Linux
 ========================
 
-1. Unzip into your EDOPro folder.
-2. Open the "EDOPro HD Sync Linux" folder.
-3. Double-click EDOPro-HD-Sync.sh.
-   (If your file manager opens it as text instead, right-click it and pick
-   "Run" or "Run in Konsole" / "Run in Terminal".)
+Easiest way (one file)
+----------------------
+1. Download "EDOPro-HD-Sync.sh" from the release.
+2. Run it: ./EDOPro-HD-Sync.sh   (or double-click and choose "Run").
+3. Pick your ProjectIgnis folder when asked (it remembers your choice).
+That's it - it downloads the app and your HD card artwork, then runs.
 
-If double-click doesn't work, open a terminal in this folder and run:
+The folder picker needs zenity or kdialog (installed on most desktops). If you
+run it from a terminal instead, it will ask you to type the path.
 
-./EDOPro-HD-Sync.sh
+Prefer the zip?
+---------------
+Unzip "EDOPro-HD-Sync-Linux-vVERSION.zip", open the "EDOPro HD Sync Linux"
+folder, and run ./EDOPro-HD-Sync.sh from there.
 
 Helpful notes
 -------------
 - The launcher downloads the latest binary automatically if EDOPro-HD-Sync-Linux is missing.
 - It downloads only missing artwork by default (fast). To re-download everything, answer "y" when it offers a full refresh, or run with --force.
-- config.json is saved beside the launcher in this folder.
+- It remembers your chosen EDOPro folder for next time.
 - The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
 - Multi-art cards (e.g. Ring of Destruction, Rescue Cat) get distinct artwork for each variant automatically.
 - You can also download curated textures (custom backgrounds & card sleeves): answer "y" when the tool asks, or run with --textures.

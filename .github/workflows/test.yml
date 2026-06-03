@@ -39,3 +39,20 @@ jobs:
 
     - name: Run unit tests
       run: python -m unittest discover tests -v
+
+    - name: Validate Windows launcher PowerShell
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: |
+        $c = Get-Content -LiteralPath 'EDOPro-HD-Sync.bat' -Raw
+        $marker = '#PS' + 'START#'
+        $idx = $c.IndexOf($marker)
+        if ($idx -lt 0) { throw 'PowerShell marker not found in launcher' }
+        $ps = $c.Substring($idx)
+        $errors = $null
+        [void][System.Management.Automation.Language.Parser]::ParseInput($ps, [ref]$null, [ref]$errors)
+        if ($errors.Count -gt 0) {
+          $errors | ForEach-Object { Write-Host $_.Message }
+          throw 'Launcher PowerShell has syntax errors'
+        }
+        Write-Host 'Windows launcher PowerShell parses cleanly.'

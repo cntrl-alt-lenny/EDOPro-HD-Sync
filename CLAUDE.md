@@ -89,6 +89,11 @@ Each bundle includes a platform-specific `ReadMe.txt`. The workflow also smoke-t
 - Runs the binary with `--edopro-path "<folder>"`. It no longer passes `--force`, so runs are incremental (only missing art); pass `--force` for a full refresh, or use the in-app "re-download everything?" prompt that appears when nothing is missing
 - Must stay marked executable in git: `git update-index --chmod=+x EDOPro-HD-Sync.command`
 
+## Linux & Windows launchers
+- `EDOPro-HD-Sync.sh` (Linux) mirrors the macOS launcher: standalone single file, folder picker via `zenity`/`kdialog` (terminal fallback), self-downloads + checksum-verifies the binary into `~/.local/share/EDOPro-HD-Sync`, remembers the folder, runs with `--edopro-path`. Keep it executable in git.
+- `EDOPro-HD-Sync.bat` (Windows) is a batch/PowerShell polyglot: the embedded PowerShell after the `#PSSTART#` marker downloads + checksum-verifies the zip into `%LOCALAPPDATA%\EDOPro-HD-Sync`, runs `Unblock-File` (the SmartScreen equivalent of the macOS quarantine strip), then runs the exe (which shows its own folder picker). `.gitattributes` keeps it CRLF; test.yml validates the embedded PowerShell parses on the Windows runner.
+- All three launchers are attached to releases as standalone single files (and bundled in their platform zips).
+
 ## Output files
 - `pics/{id}.jpg` - downloaded card images (in the EDOPro folder)
 - `config.json` - optional user config (generated with `--generate-config`)
