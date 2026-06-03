@@ -1,10 +1,20 @@
 EDOPro HD Sync for Windows
 ==========================
 
-1. Extract this zip anywhere you like.
-2. Open the "EDOPro HD Sync Windows" folder.
-3. Run EDOPro-HD-Sync.exe.
-4. Pick your EDOPro folder when the tool asks for it.
+Easiest way (one file)
+----------------------
+1. Download "EDOPro-HD-Sync.bat" from the release.
+2. Double-click it.
+3. Pick your EDOPro folder when asked (it remembers your choice).
+That's it - it downloads the app and your HD card artwork, then runs.
+
+If Windows SmartScreen warns about the .bat, click "More info" then "Run anyway"
+(the app it downloads is unblocked automatically, so it won't keep prompting).
+
+Prefer the zip?
+---------------
+Extract "EDOPro-HD-Sync-Windows-vVERSION.zip", open the "EDOPro HD Sync Windows"
+folder, run EDOPro-HD-Sync.exe, and pick your EDOPro folder when asked.
 
 Helpful notes
 -------------
