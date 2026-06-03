@@ -135,9 +135,8 @@ def _truncate(text: str, max_len: int) -> str:
 
 
 LATEST_RELEASE_API = "https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest"
-TEXTURES_RELEASE_API = (
-    "https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases/tags/textures"
-)
+TEXTURES_RELEASES_API = "https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases"
+TEXTURES_RELEASE_API = f"{TEXTURES_RELEASES_API}/tags/textures"
 
 
 def _parse_version(text: str) -> tuple[int, ...]:
@@ -889,15 +888,24 @@ async def download_card(
 # Curated textures
 
 
-async def download_curated_textures(session: aiohttp.ClientSession, cfg: Config) -> tuple[int, int]:
-    """Download the curated texture pack into <edopro>/textures/.
+def _textures_release_api(pack: str | None) -> str:
+    """GitHub API URL for a texture pack's release (default pack -> the 'textures' tag)."""
+    tag = "textures" if not pack or pack == "default" else f"textures-{pack}"
+    return f"{TEXTURES_RELEASES_API}/tags/{tag}"
+
+
+async def download_curated_textures(
+    session: aiohttp.ClientSession, cfg: Config, pack: str | None = None
+) -> tuple[int, int]:
+    """Download a curated texture pack into <edopro>/textures/.
 
     Textures aren't on a card database, so they're published as assets on a
-    dedicated "textures" GitHub release. Returns (downloaded, total_available).
+    dedicated GitHub release ("textures", or "textures-<pack>" for extra packs).
+    Returns (downloaded, total_available).
     """
     try:
         timeout = aiohttp.ClientTimeout(total=15)
-        async with session.get(TEXTURES_RELEASE_API, timeout=timeout) as resp:
+        async with session.get(_textures_release_api(pack), timeout=timeout) as resp:
             if resp.status == 404:
                 console.print("[yellow]No curated textures have been published yet.[/yellow]")
                 return (0, 0)
@@ -945,6 +953,62 @@ async def download_curated_textures(session: aiohttp.ClientSession, cfg: Config)
         else:
             console.print(f"  [yellow]could not download {name}[/yellow]")
     return (downloaded, len(assets))
+
+
+async def list_texture_packs(session: aiohttp.ClientSession) -> list[tuple[str, str]]:
+    """List texture packs from the 'textures' and 'textures-*' releases.
+
+    Returns [(pack_name, label)]; 'default' is the standard 'textures' release.
+    """
+    try:
+        timeout = aiohttp.ClientTimeout(total=15)
+        async with session.get(f"{TEXTURES_RELEASES_API}?per_page=100", timeout=timeout) as resp:
+            if resp.status != 200:
+                return []
+            data = await resp.json()
+    except Exception:
+        return []
+    packs: list[tuple[str, str]] = []
+    for rel in data or []:
+        if not isinstance(rel, dict):
+            continue
+        tag = rel.get("tag_name", "")
+        if not isinstance(tag, str):
+            continue
+        label = rel.get("name") or tag
+        if tag == "textures":
+            packs.append(("default", label))
+        elif tag.startswith("textures-"):
+            packs.append((tag[len("textures-") :], label))
+    return packs
+
+
+async def _resolve_texture_pack(session: aiohttp.ClientSession, cfg: Config) -> str:
+    """Pick which texture pack to download: an explicit flag, the only pack, or a prompt."""
+    if cfg.textures_pack:
+        return cfg.textures_pack
+    if cfg.quiet or cfg.dry_run:
+        return "default"
+    packs = await list_texture_packs(session)
+    if len(packs) <= 1:
+        return "default"
+    console.print("\n[bold]Available texture packs:[/bold]")
+    for i, (name, label) in enumerate(packs, 1):
+        console.print(f"  {i}. {name} [dim]({label})[/dim]")
+    while True:
+        try:
+            raw = input(f"Choose a pack [1-{len(packs)}] (default 1): ").strip()
+        except EOFError:
+            return packs[0][0]
+        if not raw:
+            return packs[0][0]
+        try:
+            idx = int(raw)
+        except ValueError:
+            idx = 0
+        if 1 <= idx <= len(packs):
+            return packs[idx - 1][0]
+        console.print("[yellow]Please enter a number from the list.[/yellow]")
 
 
 def _resolve_want_textures(cfg: Config, has_cards: bool) -> bool:
@@ -1367,8 +1431,9 @@ async def run(cfg: Config):
                 await asyncio.gather(*workers)
 
         if want_textures and not cfg.dry_run:
-            console.print("\n[bold cyan]Downloading curated textures...[/bold cyan]")
-            got, total = await download_curated_textures(session, cfg)
+            pack = await _resolve_texture_pack(session, cfg)
+            console.print(f"\n[bold cyan]Downloading curated textures ({pack})...[/bold cyan]")
+            got, total = await download_curated_textures(session, cfg, pack)
             if total:
                 console.print(
                     f"[green]Curated textures: {got}/{total} downloaded[/green] "

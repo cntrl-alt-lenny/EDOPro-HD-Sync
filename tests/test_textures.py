@@ -142,5 +142,84 @@ class ResolveWantTexturesTests(unittest.TestCase):
         prompt.assert_called_once()
 
 
+class TextureReleaseApiTests(unittest.TestCase):
+    def test_default_pack_uses_textures_tag(self):
+        self.assertEqual(main._textures_release_api(None), main.TEXTURES_RELEASE_API)
+        self.assertEqual(main._textures_release_api("default"), main.TEXTURES_RELEASE_API)
+
+    def test_named_pack_uses_suffixed_tag(self):
+        self.assertTrue(main._textures_release_api("dark").endswith("/tags/textures-dark"))
+
+
+class _ReleasesSession:
+    def __init__(self, releases):
+        self.releases = releases
+
+    def get(self, url, timeout=None):
+        return _Resp(status=200, json_data=self.releases)
+
+
+class ListTexturePacksTests(unittest.TestCase):
+    def test_filters_to_textures_releases(self):
+        releases = [
+            {"tag_name": "v4.8.0", "name": "App 4.8.0"},
+            {"tag_name": "textures", "name": "Curated Textures"},
+            {"tag_name": "textures-dark", "name": "Dark Pack"},
+            {"tag_name": "random", "name": "Nope"},
+        ]
+        packs = asyncio.run(main.list_texture_packs(_ReleasesSession(releases)))
+
+        self.assertEqual(len(packs), 2)
+        self.assertIn(("default", "Curated Textures"), packs)
+        self.assertIn(("dark", "Dark Pack"), packs)
+
+
+class ResolveTexturePackTests(unittest.TestCase):
+    def _cfg(self, textures_pack=None, quiet=False, dry_run=False):
+        return types.SimpleNamespace(textures_pack=textures_pack, quiet=quiet, dry_run=dry_run)
+
+    def test_explicit_flag_wins(self):
+        cfg = self._cfg(textures_pack="dark")
+        self.assertEqual(asyncio.run(main._resolve_texture_pack(None, cfg)), "dark")
+
+    def test_quiet_uses_default(self):
+        cfg = self._cfg(quiet=True)
+        self.assertEqual(asyncio.run(main._resolve_texture_pack(None, cfg)), "default")
+
+    def test_single_pack_skips_prompt(self):
+        with mock.patch.object(
+            main, "list_texture_packs", new=mock.AsyncMock(return_value=[("default", "x")])
+        ):
+            self.assertEqual(
+                asyncio.run(main._resolve_texture_pack(object(), self._cfg())), "default"
+            )
+
+    def test_multiple_packs_prompt_picks_choice(self):
+        packs = [("default", "Std"), ("dark", "Dark")]
+        with (
+            mock.patch.object(main, "list_texture_packs", new=mock.AsyncMock(return_value=packs)),
+            mock.patch("builtins.input", return_value="2"),
+        ):
+            self.assertEqual(asyncio.run(main._resolve_texture_pack(object(), self._cfg())), "dark")
+
+
+class PackDownloadUrlTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.cfg = types.SimpleNamespace(edopro_path=self.tmp.name, timeout=30, max_retries=1)
+
+    def test_download_requests_pack_specific_release(self):
+        captured = {}
+
+        class _S:
+            def get(self, url, timeout=None):
+                captured.setdefault("url", url)
+                return _Resp(status=404)
+
+        asyncio.run(main.download_curated_textures(_S(), self.cfg, "dark"))
+        self.assertTrue(captured["url"].endswith("/tags/textures-dark"))
+
+
 if __name__ == "__main__":
     unittest.main()

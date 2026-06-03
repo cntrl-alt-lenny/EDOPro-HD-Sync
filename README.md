@@ -75,6 +75,7 @@ Scans all `.cdb` card databases in your EDOPro folder, tries each card's ID dire
 - `python main.py --dry-run` previews what would be downloaded
 - `python main.py --repair` re-downloads any images in `pics/` that are corrupt or incomplete
 - `python main.py --textures` also downloads the curated texture pack (custom backgrounds and card sleeves) into `textures/` (the packaged app asks about this too)
+- `python main.py --textures-pack NAME` picks a specific texture pack when more than one is available
 - `python main.py --edopro-path "/path/to/ProjectIgnis"` points the tool at a specific folder
 
 ## Contributing

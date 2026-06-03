@@ -266,6 +266,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Also download the curated texture pack (backgrounds, card sleeves) into textures/.",
     )
+    p.add_argument(
+        "--textures-pack",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help="Which curated texture pack to download (default: the standard set).",
+    )
     return p
 
 
@@ -370,6 +377,9 @@ class Config:
         if not isinstance(file_textures, bool):
             file_textures = None
         self.textures: bool | None = _pick_value(self.cli.textures, file_textures, None)
+        self.textures_pack: str | None = _pick_value(
+            self.cli.textures_pack, file_cfg.get("textures_pack"), None
+        )
 
     def set_edopro_path(self, edopro_path: str, save: bool = False) -> bool:
         """Update path-derived fields and optionally persist the new folder."""
