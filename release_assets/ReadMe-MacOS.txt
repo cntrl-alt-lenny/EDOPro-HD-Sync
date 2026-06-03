@@ -25,7 +25,7 @@ The "EDOPro-HD-Sync-macOS-vVERSION.zip" still works: unzip it, open the
 
 Helpful notes
 -------------
-- Packaged builds refresh all artwork each run, so you do not need --force.
+- It downloads only missing artwork by default (fast). If everything is already there it offers to re-download all; or run with --force.
 - The launcher and its settings live in:
   ~/Library/Application Support/EDOPro-HD-Sync
 - The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.

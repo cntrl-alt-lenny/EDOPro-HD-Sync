@@ -131,6 +131,24 @@ class ConfigPathTests(unittest.TestCase):
         self.assertEqual(cfg.edopro_path, os.path.abspath(cli_path))
         self.assertEqual(cfg.pics_path, os.path.join(os.path.abspath(cli_path), "pics"))
 
+    def test_force_defaults_to_false_even_when_frozen(self):
+        frozen_dir = os.path.join(self.test_root, "frozen-build")
+        os.makedirs(frozen_dir, exist_ok=True)
+        fake_executable = os.path.join(frozen_dir, "EDOPro-HD-Sync.exe")
+
+        with (
+            mock.patch.object(config_module.sys, "executable", fake_executable),
+            mock.patch.object(config_module.sys, "frozen", True, create=True),
+        ):
+            cfg = Config([])
+
+        self.assertFalse(cfg.force)
+
+    def test_force_flag_enables_full_refresh(self):
+        cfg = Config(["--config", os.path.join(self.test_root, "config.json"), "--force"])
+
+        self.assertTrue(cfg.force)
+
 
 if __name__ == "__main__":
     unittest.main()

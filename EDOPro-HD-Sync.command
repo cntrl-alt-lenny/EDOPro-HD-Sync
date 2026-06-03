@@ -155,7 +155,7 @@ done
 echo "Using EDOPro folder: $EDOPRO_DIR"
 echo ""
 
-"$BINARY" --force --edopro-path "$EDOPRO_DIR"
+"$BINARY" --edopro-path "$EDOPRO_DIR"
 
 echo ""
 read -rp "Press Enter to close this window..."

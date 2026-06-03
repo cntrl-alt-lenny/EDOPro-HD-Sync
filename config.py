@@ -159,8 +159,8 @@ def _build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "Re-download ALL images, even ones that already exist. "
-            "Packaged builds force-refresh by default; pass --no-force to keep existing files."
+            "Re-download ALL images for a full refresh, even ones that already exist. "
+            "By default only missing images are downloaded."
         ),
     )
     p.add_argument(
@@ -337,11 +337,10 @@ class Config:
         self.sources: dict = sources
         self.suffixes: list = file_cfg.get("suffixes_to_strip", DEFAULTS["suffixes_to_strip"])
 
-        frozen = getattr(sys, "frozen", False)
         self.force: bool = _ensure_bool(
             "force",
-            _pick_value(self.cli.force, file_cfg.get("force"), frozen),
-            frozen,
+            _pick_value(self.cli.force, file_cfg.get("force"), False),
+            False,
         )
         self.dry_run: bool = self.cli.dry_run
         self.quiet: bool = self.cli.quiet

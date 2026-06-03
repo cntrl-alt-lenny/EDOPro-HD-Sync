@@ -8,7 +8,7 @@ EDOPro HD Sync for Windows
 
 Helpful notes
 -------------
-- Packaged builds refresh artwork automatically, so you do not need to add --force.
+- It downloads only missing artwork by default (fast). To re-download everything, answer "y" when it offers a full refresh, or run with --force.
 - The tool remembers your chosen EDOPro folder in config.json beside the exe.
 - The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
 - Multi-art cards (e.g. Ring of Destruction, Rescue Cat) get distinct artwork for each variant automatically.

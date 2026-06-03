@@ -82,11 +82,11 @@ Each bundle includes a platform-specific `ReadMe.txt`. The workflow also smoke-t
 `fail-fast: false` is set so a failure on one platform does not cancel the others.
 
 ## macOS launcher (`EDOPro-HD-Sync.command`)
-- Bash script, double-click opens it in Terminal
-- `cd "$SCRIPT_DIR/.."` sets working dir to the EDOPro folder (one level up from the tool folder)
-- Downloads the binary from the latest GitHub release if not already present
-- `xattr -d com.apple.quarantine` strips the macOS quarantine flag so users only get one security prompt
-- Runs the binary with `--force` (re-downloads all artwork every time)
+- Standalone single file: double-click opens it in Terminal; it does NOT need to live inside the EDOPro folder. Attached to releases on its own and also bundled in the zip.
+- First run shows a native "choose folder" dialog (defaults to `/Applications`, auto-targets `/Applications/ProjectIgnis`) and remembers the choice in `~/Library/Application Support/EDOPro-HD-Sync/edopro_folder.txt`
+- Downloads + checksum-verifies the binary into `~/Library/Application Support/EDOPro-HD-Sync` if missing (or uses the binary shipped next to it in the zip bundle)
+- `xattr -d com.apple.quarantine` strips the quarantine flag from itself and the binary. The binary is fetched via curl so it isn't quarantined — the app opens with no Gatekeeper/Privacy prompt; only the launcher file itself may need a one-time right-click → Open
+- Runs the binary with `--edopro-path "<folder>"`. It no longer passes `--force`, so runs are incremental (only missing art); pass `--force` for a full refresh, or use the in-app "re-download everything?" prompt that appears when nothing is missing
 - Must stay marked executable in git: `git update-index --chmod=+x EDOPro-HD-Sync.command`
 
 ## Output files

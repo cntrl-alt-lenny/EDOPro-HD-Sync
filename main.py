@@ -1202,6 +1202,17 @@ async def run(cfg: Config):
                 f"(re-check with --recheck-missing)[/dim]"
             )
 
+    # Nothing missing? Offer the easy full refresh (re-download everything).
+    if (
+        not missing_ids
+        and not cfg.force
+        and not cfg.dry_run
+        and not cfg.quiet
+        and _prompt_yes_no("All artwork is already downloaded. Re-download everything anyway?")
+    ):
+        cfg.force = True
+        missing_ids = list(id_to_name.keys())
+
     save_report_after = cfg.save_report
     if missing_ids:
         console.print(

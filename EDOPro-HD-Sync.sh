@@ -93,7 +93,7 @@ fi
 # Some file managers strip the executable bit on extract, so re-apply it.
 chmod +x "$BINARY" 2>/dev/null
 
-"$BINARY" --force
+"$BINARY"
 
 echo ""
 read -rp "Press Enter to close this window..."

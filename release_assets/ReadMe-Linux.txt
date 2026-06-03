@@ -14,7 +14,7 @@ If double-click doesn't work, open a terminal in this folder and run:
 Helpful notes
 -------------
 - The launcher downloads the latest binary automatically if EDOPro-HD-Sync-Linux is missing.
-- Packaged builds refresh artwork automatically, so you do not need to add --force.
+- It downloads only missing artwork by default (fast). To re-download everything, answer "y" when it offers a full refresh, or run with --force.
 - config.json is saved beside the launcher in this folder.
 - The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
 - Multi-art cards (e.g. Ring of Destruction, Rescue Cat) get distinct artwork for each variant automatically.
