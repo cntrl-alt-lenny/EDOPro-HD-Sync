@@ -256,6 +256,11 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
+        "--repair",
+        action="store_true",
+        help="Re-download images in pics/ that are missing, corrupt, or not valid JPEGs.",
+    )
+    p.add_argument(
         "--textures",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -359,6 +364,7 @@ class Config:
         self.deck_paths: list[str] = list(self.cli.deck or [])
         self.decks_folder: str | None = self.cli.decks_folder
         self.prune: bool = self.cli.prune
+        self.repair: bool = self.cli.repair
 
         file_textures = file_cfg.get("textures")
         if not isinstance(file_textures, bool):

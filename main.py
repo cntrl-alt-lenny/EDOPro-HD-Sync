@@ -705,6 +705,37 @@ def _looks_like_image(content: bytes) -> bool:
     )
 
 
+def find_broken_images(pics_path: str, known_ids: set[int]) -> list[int]:
+    """Return card IDs whose pics/<id>.jpg exists but isn't a valid JPEG.
+
+    Used by --repair to catch images that are truncated, empty, or were an error
+    page saved as a .jpg before download validation existed.
+    """
+    broken: list[int] = []
+    if not os.path.isdir(pics_path):
+        return broken
+    for entry in os.listdir(pics_path):
+        if not entry.endswith(".jpg"):
+            continue
+        try:
+            cid = int(entry[:-4])
+        except ValueError:
+            continue
+        if cid not in known_ids:
+            continue
+        path = os.path.join(pics_path, entry)
+        try:
+            if os.path.getsize(path) < MIN_IMAGE_BYTES:
+                broken.append(cid)
+                continue
+            with open(path, "rb") as f:
+                if f.read(len(JPEG_MAGIC)) != JPEG_MAGIC:
+                    broken.append(cid)
+        except OSError:
+            continue
+    return broken
+
+
 # When a server replies 429 (rate limited) it may send a Retry-After header
 # telling us how many seconds to wait. We honor it, capped so one throttled
 # request can't stall the whole sync. Only the seconds form is parsed; the
@@ -1183,6 +1214,18 @@ async def run(cfg: Config):
     failure_cache = (
         {} if cfg.recheck_missing or cfg.force else load_failure_cache(failure_cache_path)
     )
+
+    if cfg.repair:
+        broken = find_broken_images(cfg.pics_path, set(id_to_name))
+        for cid in broken:
+            _remove_quietly(os.path.join(cfg.pics_path, f"{cid}.jpg"))
+            failure_cache.pop(cid, None)
+        if broken:
+            console.print(
+                f"[yellow]Repair: re-downloading {len(broken):,} broken image(s).[/yellow]"
+            )
+        else:
+            console.print("[dim]Repair: no broken images found.[/dim]")
 
     if cfg.force:
         missing_ids = list(id_to_name.keys())
