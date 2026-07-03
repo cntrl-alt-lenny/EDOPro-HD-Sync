@@ -6,8 +6,8 @@ Produces two SVGs in assets/:
   whats-new.svg        - "What's New" card: the changes in the latest release,
                          each tagged NEW/FIX/MISC, plus a commits/files/lines
                          stats row.
-  release-history.svg  - heatmap strip of recent releases; each tile's shading
-                         scales with how many lines that release added.
+  release-history.svg  - feature timeline of recent releases: each release with
+                         the user-visible changes it shipped.
 
 A GitHub Actions workflow (.github/workflows/whats-new.yml) runs this on every
 release tag and commits the results, so the README updates itself. Preview by
@@ -16,7 +16,6 @@ hand with:
     python3 tools/build_whats_new.py
 """
 
-import math
 import os
 import re
 import subprocess
@@ -36,7 +35,7 @@ SKIP_PREFIXES = (
 
 MAX_BULLETS = 8
 MAX_BULLET_CHARS = 72
-HISTORY_WINDOW = 12
+HISTORY_WINDOW = 8
 
 # git's well-known empty tree: lets us diff the very first release against nothing.
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
@@ -125,24 +124,29 @@ def collect_release_info() -> dict:
     }
 
 
-def collect_release_history() -> list[dict]:
-    """Per-release insertion counts for the last HISTORY_WINDOW releases, oldest first."""
+def collect_release_timeline() -> list[dict]:
+    """The last HISTORY_WINDOW releases with their user-visible changes, newest first."""
     tags = version_tags_newest_first()
-    history = []
+    timeline = []
     for i, tag in enumerate(tags[:HISTORY_WINDOW]):
-        base = tags[i + 1] if i + 1 < len(tags) else EMPTY_TREE
-        _, insertions, _ = diff_stats(base, tag)
-        history.append({"tag": tag, "insertions": insertions})
-    history.reverse()
-    return history
-
-
-def fmt_count(n: int) -> str:
-    if n >= 10_000:
-        return f"{n / 1000:.0f}k"
-    if n >= 1_000:
-        return f"{n / 1000:.1f}k"
-    return str(n)
+        previous = tags[i + 1] if i + 1 < len(tags) else None
+        commit_range = f"{previous}..{tag}" if previous else tag
+        subjects = []
+        for subject in git("log", "--format=%s", commit_range).splitlines():
+            cleaned = subject.strip()
+            if not cleaned or cleaned.lower().startswith(SKIP_PREFIXES):
+                continue
+            if cleaned not in subjects:
+                subjects.append(cleaned)
+        released = date.fromisoformat(git("log", "-1", "--format=%as", tag))
+        timeline.append(
+            {
+                "tag": tag,
+                "date": f"{released.strftime('%b')} {released.day}, {released.year}",
+                "subjects": subjects,
+            }
+        )
+    return timeline
 
 
 COMMON_STYLE = """    text { font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
@@ -257,65 +261,109 @@ def render_whats_new(info: dict) -> str:
 """
 
 
-def render_release_history(history: list[dict]) -> str:
+MAX_TIMELINE_LINES = 2
+MAX_TIMELINE_CHARS = 78
+CHIP_ORDER = {"NEW": 0, "FIX": 1, "MISC": 2}
+
+
+def render_release_timeline(timeline: list[dict]) -> str:
+    """A vertical feature timeline: each release with the changes it shipped."""
     width = 760
-    height = 178
-    tiles_top = 66
-    tile_h = 48
-    gap = 8
-    n = len(history)
+    top = 76
+    header_h = 24
+    line_h = 21
+    row_gap = 15
+    dot_x = 40
+    text_x = 58
 
-    tile_w = min(64, (width - 60 - (n - 1) * gap) / n)
-    strip_w = n * tile_w + (n - 1) * gap
-    x0 = (width - strip_w) / 2
+    rows = []
+    y = top
+    dot_ys = []
+    for i, rel in enumerate(timeline):
+        shown = sorted(
+            rel["subjects"],
+            key=lambda s: (CHIP_ORDER[classify(s)[0]], rel["subjects"].index(s)),
+        )[:MAX_TIMELINE_LINES]
+        shown = [
+            s if len(s) <= MAX_TIMELINE_CHARS else s[: MAX_TIMELINE_CHARS - 1] + "…" for s in shown
+        ] or ["General maintenance and fixes"]
+        extra = len(rel["subjects"]) - len(shown)
 
-    scaled = [math.log1p(h["insertions"]) for h in history]
-    lo, hi = min(scaled), max(scaled)
-    span = (hi - lo) or 1.0
+        dot_ys.append(y + 8)
+        is_latest = i == 0
+        version_fill = "#ffd76a" if is_latest else "#aeb7cf"
+        changes = len(rel["subjects"])
+        changes_label = f"{changes} change{'s' if changes != 1 else ''}" if changes else "release"
+        delay = 100 + i * 90
 
-    tiles = []
-    for i, entry in enumerate(history):
-        t = (scaled[i] - lo) / span
-        x = x0 + i * (tile_w + gap)
-        opacity = 0.08 + 0.87 * t
-        text_fill = "#1a1408" if opacity > 0.5 else "#d7deee"
-        is_latest = i == n - 1
-        stroke = 'stroke="url(#gold)" stroke-width="2"' if is_latest else 'stroke="#2a3554"'
-        delay = 100 + i * 70
-        tiles.append(
-            f'  <g class="item" style="animation-delay:{delay}ms">\n'
-            f'    <rect x="{x:.1f}" y="{tiles_top}" width="{tile_w:.1f}" height="{tile_h}" '
-            f'rx="9" fill="#ffd76a" fill-opacity="{opacity:.2f}" {stroke}/>\n'
-            f'    <text x="{x + tile_w / 2:.1f}" y="{tiles_top + tile_h / 2 + 4.5}" '
-            f'text-anchor="middle" style="font-size:12.5px;font-weight:700" '
-            f'fill="{text_fill}">+{fmt_count(entry["insertions"])}</text>\n'
-            f'    <text x="{x + tile_w / 2:.1f}" y="{tiles_top + tile_h + 18}" '
-            f'text-anchor="middle" style="font-size:10.5px" '
-            f'fill="{"#ffd76a" if is_latest else "#8b94ad"}">{escape(entry["tag"])}</text>\n'
-            f"  </g>"
-        )
-    tiles_svg = "\n".join(tiles)
+        parts = [
+            f'  <g class="item" style="animation-delay:{delay}ms">',
+            (
+                f'    <circle cx="{dot_x}" cy="{y + 8}" r="5" '
+                + (
+                    'fill="url(#gold)"/>'
+                    if is_latest
+                    else 'fill="#101830" stroke="#3a4666" stroke-width="2"/>'
+                )
+            ),
+            (
+                f'    <text x="{text_x}" y="{y + 13}"><tspan style="font-size:14.5px;'
+                f'font-weight:700" fill="{version_fill}">{escape(rel["tag"])}</tspan>'
+                f'<tspan dx="10" class="date">{escape(rel["date"])}</tspan></text>'
+            ),
+            (
+                f'    <text x="{width - 28}" y="{y + 13}" class="date" '
+                f'text-anchor="end">{changes_label}</text>'
+            ),
+        ]
+        for j, subject in enumerate(shown):
+            ly = y + header_h + j * line_h
+            parts.append(
+                f'    <rect x="{text_x}" y="{ly - 4}" width="7" height="7" rx="1.5" '
+                f'transform="rotate(45 {text_x + 3.5} {ly - 0.5})" fill="url(#gold)"/>'
+            )
+            parts.append(
+                f'    <text x="{text_x + 18}" y="{ly + 4}" class="entry">{escape(subject)}</text>'
+            )
+        if extra > 0:
+            ly = y + header_h + len(shown) * line_h
+            parts.append(
+                f'    <text x="{text_x + 18}" y="{ly + 2}" class="more">'
+                f"+ {extra} more change{'s' if extra != 1 else ''}</text>"
+            )
+            y += line_h - 4
+        parts.append("  </g>")
+        rows.append("\n".join(parts))
+        y += header_h + len(shown) * line_h + row_gap
 
-    footer_y = height - 22
-    legend_x = 30
+    height = y + 44
+    spine = (
+        f'  <line x1="{dot_x}" y1="{dot_ys[0]}" x2="{dot_x}" y2="{dot_ys[-1]}" '
+        'stroke="#2a3554" stroke-width="2"/>'
+        if len(dot_ys) > 1
+        else ""
+    )
+    rows_svg = "\n".join(rows)
+    footer_y = height - 24
 
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}" role="img" aria-label="EDOPro HD Sync release activity: lines added per release">
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}" role="img" aria-label="EDOPro HD Sync release history: what each release added">
   <style>
-{COMMON_STYLE}  </style>
+{COMMON_STYLE}    .entry {{ font-size: 13.5px; fill: #d7deee; }}
+    .more {{ font-size: 12px; fill: #6d7690; font-style: italic; }}
+  </style>
 {DEFS}
 {card_frame(width, height)}
 
-  <text x="30" y="34" class="eyebrow">RELEASE ACTIVITY</text>
-  <text x="30" y="55" style="font-size:17px;font-weight:700" fill="#f3f6ff">Lines added per release</text>
-  <text x="{width - 28}" y="55" class="date" text-anchor="end">last {n} releases</text>
+  <text x="30" y="34" class="eyebrow">RELEASE HISTORY</text>
+  <text x="30" y="56" style="font-size:17px;font-weight:700" fill="#f3f6ff">What each release added</text>
+  <text x="{width - 28}" y="56" class="date" text-anchor="end">last {len(timeline)} releases</text>
 
-{tiles_svg}
+{spine}
+{rows_svg}
 
-  <rect x="{legend_x}" y="{footer_y - 9}" width="14" height="9" rx="2.5" fill="#ffd76a" fill-opacity="0.10" stroke="#2a3554"/>
-  <rect x="{legend_x + 18}" y="{footer_y - 9}" width="14" height="9" rx="2.5" fill="#ffd76a" fill-opacity="0.45" stroke="#2a3554"/>
-  <rect x="{legend_x + 36}" y="{footer_y - 9}" width="14" height="9" rx="2.5" fill="#ffd76a" fill-opacity="0.90" stroke="#2a3554"/>
-  <text x="{legend_x + 58}" y="{footer_y}" class="foot">fewer → more lines added</text>
-  <text x="{width - 28}" y="{footer_y}" class="foot" text-anchor="end">gold ring = latest release</text>
+  <line x1="30" y1="{footer_y - 15}" x2="{width - 30}" y2="{footer_y - 15}" stroke="#232d4a"/>
+  <text x="30" y="{footer_y}" class="foot">This timeline updates automatically with every release</text>
+  <text x="{width - 28}" y="{footer_y}" class="foot" text-anchor="end">See all releases →</text>
 </svg>
 """
 
@@ -328,11 +376,11 @@ def main() -> None:
         f.write(render_whats_new(info))
     print(f"Wrote assets/whats-new.svg for {info['version']} ({len(info['bullets'])} items)")
 
-    history = collect_release_history()
+    timeline = collect_release_timeline()
     path = os.path.join(ASSETS_DIR, "release-history.svg")
     with open(path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(render_release_history(history))
-    print(f"Wrote assets/release-history.svg ({len(history)} releases)")
+        f.write(render_release_timeline(timeline))
+    print(f"Wrote assets/release-history.svg ({len(timeline)} releases)")
 
 
 if __name__ == "__main__":
