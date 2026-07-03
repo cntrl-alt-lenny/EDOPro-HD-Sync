@@ -1,0 +1,13 @@
+# Opens a PR when a pinned dependency (requirements.txt) or a GitHub Action
+# used by the workflows has a new release — important for security fixes to
+# aiohttp/certifi since versions are pinned exactly for reproducible builds.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
