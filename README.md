@@ -8,6 +8,7 @@
   <img src="https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/github/license/cntrl-alt-lenny/EDOPro-HD-Sync" alt="License">
   <img src="https://img.shields.io/github/v/release/cntrl-alt-lenny/EDOPro-HD-Sync" alt="Release">
+  <img src="https://img.shields.io/github/downloads/cntrl-alt-lenny/EDOPro-HD-Sync/total?color=2ea44f&label=downloads" alt="Downloads">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
 </p>
 
@@ -15,6 +16,12 @@
   A fast, automatic HD artwork downloader for <a href="https://github.com/edo9300/edopro">EDOPro</a>.
   It scans your card databases, finds missing images, and downloads the best available artwork,
   including GOAT, Pre-Errata, and alternate art variants.
+</p>
+
+<p align="center">
+  <a href="https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest">
+    <img src="assets/whats-new.svg" alt="What's new in the latest release" width="760">
+  </a>
 </p>
 
 ## Why It Feels Better
