@@ -38,9 +38,14 @@ DEFAULTS = {
     "max_retries": 3,
     "timeout": 30,
     "save_report": False,
+    "field_art": True,
+    # YGOProDeck hosts official, Rush Duel, and anime/custom cards under the
+    # same IDs EDOPro uses. "field" serves the cropped art used on the playmat.
+    # A "backup" entry is still honored if a user configures one, but the old
+    # default (ProjectIgnis/Images on GitHub) was deleted upstream and is gone.
     "sources": {
         "official": "https://images.ygoprodeck.com/images/cards",
-        "backup": "https://raw.githubusercontent.com/ProjectIgnis/Images/master/pics",
+        "field": "https://images.ygoprodeck.com/images/cards_cropped",
     },
     "suffixes_to_strip": [
         " GOAT",
@@ -261,6 +266,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Re-download images in pics/ that are missing, corrupt, or not valid JPEGs.",
     )
     p.add_argument(
+        "--field-art",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Also download Field Spell playmat artwork into pics/field/ "
+            "(default: on; disable with --no-field-art)."
+        ),
+    )
+    p.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show artwork coverage and disk usage, then exit without downloading.",
+    )
+    p.add_argument(
         "--textures",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -366,6 +385,12 @@ class Config:
             ),
             DEFAULTS["save_report"],
         )
+        self.field_art: bool = _ensure_bool(
+            "field_art",
+            _pick_value(self.cli.field_art, file_cfg.get("field_art"), DEFAULTS["field_art"]),
+            DEFAULTS["field_art"],
+        )
+        self.stats: bool = self.cli.stats
         self.no_pause: bool = self.cli.no_pause
         self.health_check: bool = self.cli.health_check
         self.recheck_missing: bool = self.cli.recheck_missing

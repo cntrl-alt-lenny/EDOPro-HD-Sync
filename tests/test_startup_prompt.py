@@ -110,7 +110,7 @@ class StartupPromptTests(unittest.TestCase):
             mock.patch.object(main, "get_db_files", return_value=[]),
             mock.patch.object(main, "prompt_for_edopro_path", side_effect=prompt_stub),
             mock.patch.object(
-                main, "scan_databases", return_value=({123: "Test Card"}, {}, set())
+                main, "scan_databases", return_value=({123: "Test Card"}, {}, set(), set())
             ) as scan_mock,
             mock.patch.object(main, "load_manual_map", return_value={}),
             mock.patch.object(main.aiohttp, "ClientSession", FakeSession),
@@ -134,7 +134,7 @@ class StartupPromptTests(unittest.TestCase):
 
         with (
             mock.patch.object(main, "get_db_files", return_value=[cards_db]),
-            mock.patch.object(main, "scan_databases", return_value=({}, {}, set())),
+            mock.patch.object(main, "scan_databases", return_value=({}, {}, set(), set())),
             mock.patch.object(main, "load_manual_map", return_value={}),
         ):
             asyncio.run(main.run(cfg))
@@ -156,7 +156,7 @@ class StartupPromptTests(unittest.TestCase):
 
         with (
             mock.patch.object(main, "get_db_files", return_value=[cards_db]),
-            mock.patch.object(main, "scan_databases", return_value=({}, {}, set())),
+            mock.patch.object(main, "scan_databases", return_value=({}, {}, set(), set())),
             mock.patch.object(main, "load_manual_map", return_value={}),
             self.assertRaises(SystemExit) as ctx,
         ):

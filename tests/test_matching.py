@@ -36,7 +36,7 @@ class OfficialMatchingTests(unittest.TestCase):
             finally:
                 conn.close()
 
-            id_to_name, name_to_official, _ = main.scan_databases([db_path])
+            id_to_name, name_to_official, _, _ = main.scan_databases([db_path])
 
         self.assertEqual(id_to_name[89631133], "Blue-Eyes White Dragon")
         self.assertEqual(
@@ -68,7 +68,7 @@ class OfficialMatchingTests(unittest.TestCase):
             finally:
                 conn.close()
 
-            _, name_to_official, _ = main.scan_databases([db_path])
+            _, name_to_official, _, _ = main.scan_databases([db_path])
 
         self.assertEqual(
             name_to_official["Dark Magician"],
@@ -151,9 +151,10 @@ class DownloadCardTests(unittest.TestCase):
         self.assertEqual(attempted_urls, [f"{self.cfg.sources['official']}/46986414.jpg"])
         self.assertEqual(stats.ok_hd, 1)
 
-    def test_download_card_falls_back_to_project_ignis(self):
+    def test_download_card_falls_back_to_configured_backup(self):
         stats = main.DownloadStats()
         attempted_urls: list[str] = []
+        self.cfg.sources["backup"] = "https://backup.example/pics"
 
         async def fake_try_download(session, url, filepath, timeout, max_retries):
             attempted_urls.append(url)
@@ -295,7 +296,8 @@ class DownloadCardTests(unittest.TestCase):
         self.assertEqual(attempted_urls, [f"{self.cfg.sources['official']}/12345678.jpg"])
         self.assertEqual(stats.ok_mapped, 1)
 
-    def test_download_card_skips_ygoprodeck_for_unofficial_ids(self):
+    def test_download_card_tries_direct_id_for_unofficial_ids(self):
+        """Rush Duel and anime/custom cards live on YGOProDeck under EDOPro IDs."""
         stats = main.DownloadStats()
         attempted_urls: list[str] = []
 
@@ -322,8 +324,8 @@ class DownloadCardTests(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(attempted_urls, [f"{self.cfg.sources['backup']}/200000001.jpg"])
-        self.assertEqual(stats.ok_fallback, 1)
+        self.assertEqual(attempted_urls, [f"{self.cfg.sources['official']}/200000001.jpg"])
+        self.assertEqual(stats.ok_hd, 1)
 
 
 if __name__ == "__main__":

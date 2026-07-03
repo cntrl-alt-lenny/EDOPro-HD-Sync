@@ -411,17 +411,26 @@ def prompt_for_edopro_path(cfg: Config) -> list[str] | None:
         )
 
 
-def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, list[int]], set[int]]:
+# datas.type bitfield: TYPE_SPELL (0x2) | TYPE_FIELD (0x80000). Cards with both
+# bits are Field Spells, which also get playmat artwork in pics/field/.
+FIELD_SPELL_TYPE = 0x80002
+
+
+def scan_databases(
+    db_files: list[str],
+) -> tuple[dict[int, str], dict[str, list[int]], set[int], set[int]]:
     """
     Read every .cdb and return:
 
       id_to_name       - card_id -> card name (every card we know about)
       name_to_official - name -> official ids (IDs < 100,000,000 only)
       rush_ids         - card IDs that came from Rush Duel databases
+      field_ids        - card IDs of Field Spells (they also get playmat art)
     """
     id_to_name: dict[int, str] = {}
     name_to_official: dict[str, list[int]] = {}
     rush_ids: set[int] = set()
+    field_ids: set[int] = set()
 
     for db in db_files:
         # Skip empty placeholder files (EDOPro ships a 0-byte cards.cdb)
@@ -431,13 +440,29 @@ def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, list[
         conn = None
         try:
             conn = sqlite3.connect(db)
-            cursor = conn.execute(
-                "SELECT d.id, t.name FROM datas d INNER JOIN texts t ON d.id = t.id ORDER BY d.id"
-            )
-            for card_id, name in cursor.fetchall():
+            try:
+                rows = conn.execute(
+                    "SELECT d.id, t.name, d.type FROM datas d "
+                    "INNER JOIN texts t ON d.id = t.id ORDER BY d.id"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                # Hand-made DBs without a type column still sync card art.
+                rows = [
+                    (card_id, name, 0)
+                    for card_id, name in conn.execute(
+                        "SELECT d.id, t.name FROM datas d "
+                        "INNER JOIN texts t ON d.id = t.id ORDER BY d.id"
+                    ).fetchall()
+                ]
+            for card_id, name, card_type in rows:
                 id_to_name[card_id] = name
                 if is_rush:
                     rush_ids.add(card_id)
+                if (
+                    isinstance(card_type, int)
+                    and (card_type & FIELD_SPELL_TYPE) == FIELD_SPELL_TYPE
+                ):
+                    field_ids.add(card_id)
                 if card_id < 100_000_000:
                     official_ids = name_to_official.setdefault(name, [])
                     if card_id not in official_ids:
@@ -451,7 +476,7 @@ def scan_databases(db_files: list[str]) -> tuple[dict[int, str], dict[str, list[
     for official_ids in name_to_official.values():
         official_ids.sort()
 
-    return id_to_name, name_to_official, rush_ids
+    return id_to_name, name_to_official, rush_ids, field_ids
 
 
 # Name matching
@@ -596,11 +621,16 @@ def collect_deck_filter_ids(cfg: Config) -> set[int] | None:
 # Persistent failure cache
 
 FAILURE_CACHE_FILENAME = "failed_cards.json"
+FIELD_FAILURE_CACHE_FILENAME = "failed_fields.json"
 FAILURE_CACHE_TTL_DAYS = 14
 
 
 def _failure_cache_path(cfg: Config) -> str:
     return os.path.join(os.path.dirname(cfg.config_path), FAILURE_CACHE_FILENAME)
+
+
+def _field_failure_cache_path(cfg: Config) -> str:
+    return os.path.join(os.path.dirname(cfg.config_path), FIELD_FAILURE_CACHE_FILENAME)
 
 
 def load_failure_cache(path: str, ttl_days: int = FAILURE_CACHE_TTL_DAYS) -> dict[int, float]:
@@ -652,9 +682,13 @@ class DownloadStats:
         self.official_ok = 0
         self.skipped = 0
         self.planned = 0
+        self.planned_fields = 0
         self.failed = 0
         self.failed_cards: list[tuple[int, str]] = []
         self.transient_ids: set[int] = set()
+        self.field_ok = 0
+        self.field_failed_cards: list[tuple[int, str]] = []
+        self.field_transient_ids: set[int] = set()
         self.unexpected_errors: list[tuple[int, str, str]] = []
         self._rush_ids: set[int] = rush_ids or set()
 
@@ -726,6 +760,15 @@ class DownloadStats:
         if transient:
             self.transient_ids.add(card_id)
 
+    @property
+    def field_failed(self) -> int:
+        return len(self.field_failed_cards)
+
+    def record_field_failure(self, card_id: int, name: str, transient: bool = False) -> None:
+        self.field_failed_cards.append((card_id, name))
+        if transient:
+            self.field_transient_ids.add(card_id)
+
     def record_unexpected_error(self, card_id: int, name: str, exc: BaseException) -> None:
         self.unexpected_errors.append((card_id, name, f"{type(exc).__name__}: {exc}"))
 
@@ -750,6 +793,46 @@ def _looks_like_image(content: bytes) -> bool:
     return len(content) >= MIN_IMAGE_BYTES and (
         content.startswith(JPEG_MAGIC) or content.startswith(PNG_MAGIC)
     )
+
+
+def field_art_dir(cfg: Config) -> str:
+    return os.path.join(cfg.pics_path, "field")
+
+
+def has_field_art(cfg: Config, card_id: int) -> bool:
+    """True when playmat art exists for this card (EDOPro reads .png or .jpg)."""
+    base = field_art_dir(cfg)
+    return os.path.exists(os.path.join(base, f"{card_id}.jpg")) or os.path.exists(
+        os.path.join(base, f"{card_id}.png")
+    )
+
+
+def find_broken_field_images(field_dir: str, known_ids: set[int]) -> list[int]:
+    """Field art IDs whose pics/field image exists but isn't a valid JPEG/PNG."""
+    broken: list[int] = []
+    if not os.path.isdir(field_dir):
+        return broken
+    for entry in os.listdir(field_dir):
+        stem, _, ext = entry.rpartition(".")
+        if ext not in ("jpg", "png"):
+            continue
+        try:
+            cid = int(stem)
+        except ValueError:
+            continue
+        if cid not in known_ids:
+            continue
+        path = os.path.join(field_dir, entry)
+        try:
+            with open(path, "rb") as f:
+                head = f.read(16)
+            if os.path.getsize(path) < MIN_IMAGE_BYTES or not (
+                head.startswith(JPEG_MAGIC) or head.startswith(PNG_MAGIC)
+            ):
+                broken.append(cid)
+        except OSError:
+            continue
+    return broken
 
 
 def find_broken_images(pics_path: str, known_ids: set[int]) -> list[int]:
@@ -906,9 +989,10 @@ async def download_card(
     if manual_match:
         candidates.append(("manual-map", f"{official_source}/{manual_match}.jpg"))
 
-    # 2. Try the card's own ID on YGOProDeck (official cards only)
-    if card_id < 100_000_000:
-        candidates.append(("direct-id", f"{official_source}/{card_id}.jpg"))
+    # 2. Try the card's own ID on YGOProDeck. Official, Rush Duel, and
+    #    anime/custom cards are all hosted there under the same IDs EDOPro
+    #    uses, so every card gets a direct attempt.
+    candidates.append(("direct-id", f"{official_source}/{card_id}.jpg"))
 
     # 3. For GOAT/Pre-Errata suffix cards, try the base card's official IDs
     if is_suffix_match:
@@ -957,6 +1041,28 @@ async def download_card(
             saw_transient = True
 
     stats.record_failure(card_id, name, transient=saw_transient)
+    if progress and task_id is not None:
+        progress.advance(task_id)
+
+
+async def download_field_art(
+    session: aiohttp.ClientSession,
+    card_id: int,
+    name: str,
+    cfg: Config,
+    stats: DownloadStats,
+    progress=None,
+    task_id=None,
+) -> None:
+    """Download the playmat (cropped) artwork for one Field Spell."""
+    filepath = os.path.join(field_art_dir(cfg), f"{card_id}.jpg")
+    url = f"{cfg.sources['field']}/{card_id}.jpg"
+    timeout = aiohttp.ClientTimeout(total=cfg.timeout)
+    result = await _try_download(session, url, filepath, timeout, cfg.max_retries)
+    if result is FetchResult.OK:
+        stats.field_ok += 1
+    else:
+        stats.record_field_failure(card_id, name, transient=result is FetchResult.ERROR)
     if progress and task_id is not None:
         progress.advance(task_id)
 
@@ -1119,12 +1225,18 @@ def _build_summary_rows(
     rows: list[tuple[str, str, str | None]] = []
     if cfg.dry_run:
         rows.append(("Would download", f"{stats.planned:,}", None))
+        if stats.planned_fields:
+            rows.append(("Field art to fetch", f"{stats.planned_fields:,}", None))
         if stats.skipped:
             rows.append(("Already on disk", f"{stats.skipped:,}", "dim"))
     else:
         rows.append(("Downloaded", f"{stats.total_ok:,}", "green"))
         if stats.official_backup:
             rows.append(("Backup art", f"{stats.official_backup:,}", "cyan"))
+        if stats.field_ok:
+            rows.append(("Field art", f"{stats.field_ok:,}", "green"))
+        if stats.field_failed:
+            rows.append(("Field art unavailable", f"{stats.field_failed:,}", "yellow"))
         if stats.skipped:
             rows.append(("Already existed", f"{stats.skipped:,}", "dim"))
         if stats.failed:
@@ -1166,6 +1278,10 @@ def _write_report(stats: DownloadStats, cfg: Config, runtime_seconds: float) -> 
             f.write(f"\nDownloaded:      {stats.total_ok:,}\n")
             if stats.official_backup:
                 f.write(f"Backup art:      {stats.official_backup:,}\n")
+            if stats.field_ok:
+                f.write(f"Field art:       {stats.field_ok:,}\n")
+            if stats.field_failed:
+                f.write(f"Field art n/a:   {stats.field_failed:,}\n")
             if stats.skipped:
                 f.write(f"Already existed: {stats.skipped:,}\n")
             f.write(f"Unavailable:     {stats.failed:,}\n")
@@ -1337,6 +1453,71 @@ def run_health_check(cfg: Config) -> bool:
     return passed
 
 
+def _format_size(nbytes: int) -> str:
+    if nbytes >= 1024**3:
+        return f"{nbytes / 1024**3:.1f} GB"
+    if nbytes >= 1024**2:
+        return f"{nbytes / 1024**2:.0f} MB"
+    return f"{nbytes / 1024:.0f} KB"
+
+
+def _scan_art_folder(folder: str, extensions: tuple[str, ...]) -> tuple[set[int], int]:
+    """Return (card IDs with an image on disk, total bytes) for one art folder."""
+    ids: set[int] = set()
+    size = 0
+    if not os.path.isdir(folder):
+        return ids, size
+    with os.scandir(folder) as it:
+        for entry in it:
+            if not entry.is_file():
+                continue
+            stem, _, ext = entry.name.rpartition(".")
+            if ext not in extensions:
+                continue
+            try:
+                size += entry.stat().st_size
+            except OSError:
+                continue
+            try:
+                ids.add(int(stem))
+            except ValueError:
+                continue
+    return ids, size
+
+
+def print_coverage_stats(cfg: Config, id_to_name: dict[int, str], field_ids: set[int]) -> None:
+    """Print how much artwork is on disk versus what the databases know about."""
+    card_files, card_bytes = _scan_art_folder(cfg.pics_path, ("jpg",))
+    field_files, field_bytes = _scan_art_folder(field_art_dir(cfg), ("jpg", "png"))
+
+    total = len(id_to_name)
+    have = sum(1 for cid in id_to_name if cid in card_files)
+    fields_total = len(field_ids & id_to_name.keys())
+    fields_have = sum(1 for cid in field_ids if cid in id_to_name and cid in field_files)
+    cached = len(load_failure_cache(_failure_cache_path(cfg)))
+    field_cached = len(load_failure_cache(_field_failure_cache_path(cfg)))
+
+    def pct(part: int, whole: int) -> str:
+        return f"{100 * part / whole:.1f}%" if whole else "n/a"
+
+    console.print()
+    console.rule("[bold]Artwork Coverage[/bold]")
+    console.print(f"  Cards indexed   {total:>10,}")
+    console.print(f"  Card art        {have:>10,}  [dim]({pct(have, total)})[/dim]")
+    console.print(
+        f"  Field art       {fields_have:>10,}  [dim]of {fields_total:,} Field Spells "
+        f"({pct(fields_have, fields_total)})[/dim]"
+    )
+    console.print(f"  Disk usage      {_format_size(card_bytes + field_bytes):>10}")
+    if cached or field_cached:
+        console.print(
+            f"  Known missing   {cached + field_cached:>10,}  "
+            f"[dim](re-check with --recheck-missing)[/dim]"
+        )
+    console.rule()
+    console.print(f"[dim]Images folder: {os.path.abspath(cfg.pics_path)}[/dim]")
+
+
 async def run(cfg: Config):
     started_at = perf_counter()
 
@@ -1355,7 +1536,7 @@ async def run(cfg: Config):
 
     os.makedirs(cfg.pics_path, exist_ok=True)
 
-    full_id_to_name, name_to_official, rush_ids = scan_databases(dbs)
+    full_id_to_name, name_to_official, rush_ids, field_ids = scan_databases(dbs)
     manual_map = load_manual_map(cfg.manual_map_file)
     console.print(f"[dim]Indexed {len(full_id_to_name):,} cards[/dim]")
 
@@ -1366,6 +1547,10 @@ async def run(cfg: Config):
             "They may be corrupt or in an unexpected schema.[/bold red]"
         )
         raise SystemExit(1)
+
+    if cfg.stats:
+        print_coverage_stats(cfg, full_id_to_name, field_ids)
+        return
 
     deck_filter = collect_deck_filter_ids(cfg)
     if deck_filter is not None:
@@ -1418,9 +1603,34 @@ async def run(cfg: Config):
                 f"(re-check with --recheck-missing)[/dim]"
             )
 
+    # Field Spell playmat art (pics/field/) — same incremental + cache logic.
+    field_cache_path = _field_failure_cache_path(cfg)
+    field_cache = {} if cfg.recheck_missing or cfg.force else load_failure_cache(field_cache_path)
+    missing_fields: list[int] = []
+    if cfg.field_art:
+        candidate_fields = sorted(cid for cid in field_ids if cid in id_to_name)
+        if cfg.repair:
+            broken_fields = find_broken_field_images(field_art_dir(cfg), set(candidate_fields))
+            for cid in broken_fields:
+                _remove_quietly(os.path.join(field_art_dir(cfg), f"{cid}.jpg"))
+                _remove_quietly(os.path.join(field_art_dir(cfg), f"{cid}.png"))
+                field_cache.pop(cid, None)
+            if broken_fields:
+                console.print(
+                    f"[yellow]Repair: re-downloading {len(broken_fields):,} "
+                    "broken field image(s).[/yellow]"
+                )
+        for cid in candidate_fields:
+            if not cfg.force and has_field_art(cfg, cid):
+                continue
+            if cid in field_cache:
+                continue
+            missing_fields.append(cid)
+
     # Nothing missing? Offer the easy full refresh (re-download everything).
     if (
         not missing_ids
+        and not missing_fields
         and not cfg.force
         and not cfg.dry_run
         and not cfg.quiet
@@ -1428,12 +1638,19 @@ async def run(cfg: Config):
     ):
         cfg.force = True
         missing_ids = list(id_to_name.keys())
+        if cfg.field_art:
+            missing_fields = sorted(cid for cid in field_ids if cid in id_to_name)
 
     save_report_after = cfg.save_report
-    if missing_ids:
-        console.print(
-            f"\n[bold yellow]This will download all {len(missing_ids):,} card images.[/bold yellow]"
-        )
+    if missing_ids or missing_fields:
+        parts = []
+        if missing_ids:
+            plural = "s" if len(missing_ids) != 1 else ""
+            parts.append(f"{len(missing_ids):,} card image{plural}")
+        if missing_fields:
+            plural = "s" if len(missing_fields) != 1 else ""
+            parts.append(f"{len(missing_fields):,} Field Spell artwork{plural}")
+        console.print(f"\n[bold yellow]This will download {' and '.join(parts)}.[/bold yellow]")
         # Ask about saving a report before starting (unless --save-report or --quiet).
         if not cfg.dry_run and not cfg.save_report and not cfg.quiet:
             save_report_after = _prompt_yes_no("Save a sync report when finished?")
@@ -1445,6 +1662,12 @@ async def run(cfg: Config):
             if not cfg.dry_run:
                 await notify_if_update_available()
             return
+
+    if cfg.dry_run and missing_fields:
+        console.print(
+            f"[dim]Would download {len(missing_fields):,} Field Spell artworks "
+            "into pics/field/[/dim]"
+        )
 
     # Pre-compute match info for every card to avoid redundant lookups in workers.
     card_match_info: dict[int, tuple[list[int], str | None, bool, bool]] = {}
@@ -1460,6 +1683,8 @@ async def run(cfg: Config):
         card_match_info[card_id] = (official, manual, is_pre_errata_miss, is_suffix_match)
 
     stats = DownloadStats(rush_ids=rush_ids)
+    if cfg.dry_run:
+        stats.planned_fields = len(missing_fields)
     queue: asyncio.Queue[int] = asyncio.Queue()
     for card_id in missing_ids:
         queue.put_nowait(card_id)
@@ -1538,6 +1763,55 @@ async def run(cfg: Config):
                 workers = [make_worker()() for _ in range(cfg.concurrency)]
                 await asyncio.gather(*workers)
 
+        if missing_fields and not cfg.dry_run:
+            os.makedirs(field_art_dir(cfg), exist_ok=True)
+            field_queue: asyncio.Queue[int] = asyncio.Queue()
+            for cid in missing_fields:
+                field_queue.put_nowait(cid)
+
+            def make_field_worker(progress=None, task_id=None):
+                async def worker():
+                    while True:
+                        try:
+                            cid = field_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            return
+                        fname = id_to_name.get(cid, str(cid))
+                        if progress and task_id is not None:
+                            progress.update(
+                                task_id, description=f"Field art {_truncate(fname, 40)}"
+                            )
+                        try:
+                            await download_field_art(
+                                session, cid, fname, cfg, stats, progress, task_id
+                            )
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as exc:
+                            stats.record_field_failure(cid, fname, transient=True)
+                            stats.record_unexpected_error(cid, fname, exc)
+                            if progress and task_id is not None:
+                                progress.advance(task_id)
+
+                return worker
+
+            field_workers = min(cfg.concurrency, 20)
+            if RICH_AVAILABLE and not cfg.quiet:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[bold blue]{task.description}"),
+                    BarColumn(bar_width=40),
+                    MofNCompleteColumn(),
+                    TimeRemainingColumn(),
+                    console=console,
+                ) as progress:
+                    task_id = progress.add_task("Field art...", total=len(missing_fields))
+                    await asyncio.gather(
+                        *[make_field_worker(progress, task_id)() for _ in range(field_workers)]
+                    )
+            else:
+                await asyncio.gather(*[make_field_worker()() for _ in range(field_workers)])
+
         if want_textures and not cfg.dry_run:
             pack = await _resolve_texture_pack(session, cfg)
             console.print(f"\n[bold cyan]Downloading curated textures ({pack})...[/bold cyan]")
@@ -1563,6 +1837,16 @@ async def run(cfg: Config):
                 del failure_cache[cid]
         save_failure_cache(failure_cache_path, failure_cache)
 
+    if missing_fields and not cfg.dry_run:
+        now_ts = datetime.now().timestamp()
+        for cid, _ in stats.field_failed_cards:
+            if cid not in stats.field_transient_ids:
+                field_cache[cid] = now_ts
+        for cid in list(field_cache.keys()):
+            if has_field_art(cfg, cid):
+                del field_cache[cid]
+        save_failure_cache(field_cache_path, field_cache)
+
     if cfg.prune and not cfg.dry_run:
         if deck_filter is not None:
             console.print(
@@ -1574,7 +1858,7 @@ async def run(cfg: Config):
             if pruned:
                 console.print(f"[dim]Pruned {pruned:,} orphaned images[/dim]")
 
-    if missing_ids:
+    if missing_ids or missing_fields:
         print_summary(stats, cfg, perf_counter() - started_at, save_report_after)
 
 
