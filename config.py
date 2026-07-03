@@ -253,6 +253,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Only sync cards in every .ydk file inside this folder.",
     )
     p.add_argument(
+        "--my-decks",
+        action="store_true",
+        help="Only sync cards used in your EDOPro deck folder (much faster).",
+    )
+    p.add_argument(
+        "--gui",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Show the tick-box options window. The packaged app shows it by "
+            "default; use --no-gui to skip it."
+        ),
+    )
+    p.add_argument(
         "--prune",
         action="store_true",
         help=(
@@ -396,6 +410,10 @@ class Config:
         self.recheck_missing: bool = self.cli.recheck_missing
         self.deck_paths: list[str] = list(self.cli.deck or [])
         self.decks_folder: str | None = self.cli.decks_folder
+        self.my_decks: bool = self.cli.my_decks
+        self.gui: bool | None = self.cli.gui
+        # Console questions are skipped when the options window already ran.
+        self.interactive_prompts: bool = True
         self.prune: bool = self.cli.prune
         self.repair: bool = self.cli.repair
 

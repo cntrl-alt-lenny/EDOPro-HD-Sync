@@ -47,6 +47,12 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller==6.20.0 pillow==12.2.0
 
+    # The options window needs Tk bundled on every platform — fail loudly here
+    # rather than shipping a binary that silently falls back to console mode.
+    - name: Verify Tk is available for the options window
+      shell: bash
+      run: python -c "import tkinter; print('Tk', tkinter.TkVersion)"
+
     - name: Generate release icon
       shell: bash
       run: python tools/build_icon.py

@@ -26,16 +26,13 @@ from time import perf_counter
 import aiohttp
 import certifi
 
+import gui
 from config import BUILTIN_MANUAL_MAP, DEFAULTS, Config
 
-if sys.platform == "win32":
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-    except Exception:
-        tk = None
-        filedialog = None
-else:
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+except Exception:
     tk = None
     filedialog = None
 
@@ -606,9 +603,12 @@ def collect_deck_filter_ids(cfg: Config) -> set[int] | None:
     paths: list[str] = list(cfg.deck_paths)
     if cfg.decks_folder:
         if os.path.isdir(cfg.decks_folder):
-            for entry in sorted(os.listdir(cfg.decks_folder)):
-                if entry.endswith(".ydk"):
-                    paths.append(os.path.join(cfg.decks_folder, entry))
+            # EDOPro nests decks in subfolders, so walk the whole tree.
+            for current_root, dirnames, filenames in os.walk(cfg.decks_folder):
+                dirnames.sort()
+                for entry in sorted(filenames):
+                    if entry.endswith(".ydk"):
+                        paths.append(os.path.join(current_root, entry))
         else:
             console.print(
                 f"[yellow]--decks-folder path is not a directory: {cfg.decks_folder}[/yellow]"
@@ -1175,7 +1175,7 @@ async def _resolve_texture_pack(session: aiohttp.ClientSession, cfg: Config) -> 
     """Pick which texture pack to download: an explicit flag, the only pack, or a prompt."""
     if cfg.textures_pack:
         return cfg.textures_pack
-    if cfg.quiet or cfg.dry_run:
+    if cfg.quiet or cfg.dry_run or not getattr(cfg, "interactive_prompts", True):
         return "default"
     packs = await list_texture_packs(session)
     if len(packs) <= 1:
@@ -1453,6 +1453,80 @@ def run_health_check(cfg: Config) -> bool:
     return passed
 
 
+def _should_show_gui(cfg: Config) -> bool:
+    """Show the tick-box window for plain runs of the packaged app.
+
+    --gui forces it (handy from source), --no-gui suppresses it, and any
+    explicit power flag means the user already said what they want.
+    """
+    if cfg.gui is False:
+        return False
+    if cfg.gui is True:
+        return True
+    if not getattr(sys, "frozen", False):
+        return False
+    if cfg.quiet or cfg.dry_run or cfg.stats or cfg.health_check or cfg.repair or cfg.force:
+        return False
+    if cfg.deck_paths or cfg.decks_folder or cfg.my_decks or cfg.prune or cfg.recheck_missing:
+        return False
+    return cfg.textures is None and not cfg.textures_pack
+
+
+def _apply_gui_choices(cfg: Config, choices: dict) -> None:
+    """Copy the dialog's tick-boxes onto the config and mute console questions."""
+    cfg.field_art = bool(choices.get("field_art", cfg.field_art))
+    cfg.my_decks = bool(choices.get("my_decks", False))
+    cfg.textures = bool(choices.get("textures", False))
+    cfg.repair = bool(choices.get("repair", False))
+    cfg.force = bool(choices.get("force", False))
+    cfg.save_report = bool(choices.get("save_report", False))
+    cfg.stats = bool(choices.get("stats", False))
+    # The window already answered everything a console prompt would ask.
+    cfg.interactive_prompts = False
+
+
+def _maybe_show_gui(cfg: Config) -> bool:
+    """Show the options window when appropriate. Returns False when the user quit."""
+    if not _should_show_gui(cfg):
+        return True
+    try:
+        if not gui.gui_available():
+            return True
+        choices = gui.show_options_dialog(
+            VERSION,
+            {"field_art": cfg.field_art, "save_report": cfg.save_report},
+        )
+    except Exception:
+        # No display / broken Tk — the console flow works everywhere.
+        return True
+    if choices is None:
+        return False
+    _apply_gui_choices(cfg, choices)
+    return True
+
+
+def _count_card_images(pics_path: str) -> int:
+    """Count downloaded card images; cheap fresh-install detector."""
+    if not os.path.isdir(pics_path):
+        return 0
+    count = 0
+    with os.scandir(pics_path) as it:
+        for entry in it:
+            if entry.name.endswith(".jpg") and entry.is_file():
+                count += 1
+    return count
+
+
+def _count_deck_files(folder: str) -> int:
+    """Count .ydk files under a deck folder (EDOPro nests them in subfolders)."""
+    if not os.path.isdir(folder):
+        return 0
+    count = 0
+    for _root, _dirs, files in os.walk(folder):
+        count += sum(1 for f in files if f.endswith(".ydk"))
+    return count
+
+
 def _format_size(nbytes: int) -> str:
     if nbytes >= 1024**3:
         return f"{nbytes / 1024**3:.1f} GB"
@@ -1528,6 +1602,9 @@ async def run(cfg: Config):
             raise SystemExit(1)
         return
 
+    if not _maybe_show_gui(cfg):
+        return
+
     dbs = get_db_files(cfg.edopro_path)
     if not dbs:
         dbs = prompt_for_edopro_path(cfg)
@@ -1551,6 +1628,38 @@ async def run(cfg: Config):
     if cfg.stats:
         print_coverage_stats(cfg, full_id_to_name, field_ids)
         return
+
+    # "Only my decks" (tick-box or --my-decks) points the deck filter at
+    # EDOPro's own deck folder.
+    if cfg.my_decks and not cfg.deck_paths and not cfg.decks_folder:
+        deck_dir = os.path.join(cfg.edopro_path, "deck")
+        if _count_deck_files(deck_dir):
+            cfg.decks_folder = deck_dir
+        else:
+            console.print(
+                "[yellow]No decks found in the EDOPro deck folder — "
+                "syncing everything instead.[/yellow]"
+            )
+
+    # Fresh install with decks? Offer the fast path before a ~13,000-card sync.
+    if (
+        cfg.interactive_prompts
+        and not cfg.quiet
+        and not cfg.dry_run
+        and not cfg.force
+        and not cfg.my_decks
+        and not cfg.deck_paths
+        and not cfg.decks_folder
+        and len(full_id_to_name) > 2000
+        and _count_card_images(cfg.pics_path) < 500
+    ):
+        deck_dir = os.path.join(cfg.edopro_path, "deck")
+        deck_count = _count_deck_files(deck_dir)
+        if deck_count and _prompt_yes_no(
+            f"Quick start: only sync the cards in your {deck_count} deck(s) for now? "
+            "(run again later for the full set)"
+        ):
+            cfg.decks_folder = deck_dir
 
     deck_filter = collect_deck_filter_ids(cfg)
     if deck_filter is not None:
@@ -1634,6 +1743,7 @@ async def run(cfg: Config):
         and not cfg.force
         and not cfg.dry_run
         and not cfg.quiet
+        and cfg.interactive_prompts
         and _prompt_yes_no("All artwork is already downloaded. Re-download everything anyway?")
     ):
         cfg.force = True
@@ -1652,7 +1762,7 @@ async def run(cfg: Config):
             parts.append(f"{len(missing_fields):,} Field Spell artwork{plural}")
         console.print(f"\n[bold yellow]This will download {' and '.join(parts)}.[/bold yellow]")
         # Ask about saving a report before starting (unless --save-report or --quiet).
-        if not cfg.dry_run and not cfg.save_report and not cfg.quiet:
+        if not cfg.dry_run and not cfg.save_report and not cfg.quiet and cfg.interactive_prompts:
             save_report_after = _prompt_yes_no("Save a sync report when finished?")
         want_textures = _resolve_want_textures(cfg, has_cards=True)
     else:
