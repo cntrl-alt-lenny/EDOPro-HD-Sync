@@ -153,6 +153,32 @@ def _parse_version(text: str) -> tuple[int, ...]:
     return tuple(numbers) if numbers else (0,)
 
 
+def _update_message(latest: str) -> str:
+    return (
+        f"[yellow]A newer version ({latest}) is available — "
+        "https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest\n"
+        "The one-file launcher installs updates automatically the next time you run it.[/yellow]"
+    )
+
+
+async def notify_if_update_available() -> None:
+    """One-shot startup update check for paths that never open the main session.
+
+    The normal sync path checks inside its own HTTP session; this covers the
+    "everything is already synced" early exit so opening the tool always tells
+    the user about a new release. Silent on any failure.
+    """
+    try:
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        connector = aiohttp.TCPConnector(ssl=ssl_ctx)
+        async with aiohttp.ClientSession(connector=connector) as session:
+            latest = await check_for_update(session, VERSION)
+    except Exception:
+        return
+    if latest:
+        console.print(_update_message(latest))
+
+
 async def check_for_update(session: aiohttp.ClientSession, current: str) -> str | None:
     """Return the latest release tag if it's newer than `current`, else None.
 
@@ -1416,6 +1442,8 @@ async def run(cfg: Config):
         want_textures = _resolve_want_textures(cfg, has_cards=False)
         if not want_textures:
             console.print("\n[bold green]All synced — nothing to download![/bold green]")
+            if not cfg.dry_run:
+                await notify_if_update_available()
             return
 
     # Pre-compute match info for every card to avoid redundant lookups in workers.
@@ -1455,10 +1483,7 @@ async def run(cfg: Config):
             if server_msg:
                 console.print(server_msg)
             if latest:
-                console.print(
-                    f"[yellow]A newer version ({latest}) is available — "
-                    "https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest[/yellow]"
-                )
+                console.print(_update_message(latest))
 
         def make_worker(progress=None, task_id=None):
             async def worker():
