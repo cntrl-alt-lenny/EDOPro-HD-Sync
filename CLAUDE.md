@@ -28,10 +28,17 @@ python main.py --health-check   # quick offline sanity check
 ```text
 main.py                     # core logic: DB scan, download pipeline, Rich UI
 config.py                   # settings: defaults -> config.json -> CLI flags
+gui.py                      # tick-box options window (tkinter, all platforms)
 requirements.txt            # aiohttp, rich, certifi
 EDOPro-HD-Sync.command      # macOS double-click launcher
 .github/workflows/build.yml # CI: builds binaries for all 3 platforms on tag push
 ```
+
+## Options window (gui.py)
+Plain packaged runs open a small tkinter window with tick-boxes (field art, only-my-decks, textures, repair, full refresh, save report) plus Start / Show coverage buttons. Rules in `_should_show_gui`: `--gui` forces it (even from source), `--no-gui` or any explicit power flag skips it, and it never shows for non-frozen runs by default. When it runs, `cfg.interactive_prompts` is set False so the console questions (report? re-download? texture pack?) stay silent — the window already answered them. If Tk is missing or there's no display, everything falls back to the console flow. The build workflow hard-fails if tkinter is unavailable on a CI runner so a binary without the window can't ship silently. PyInstaller bundles Tcl/Tk automatically via the top-level tkinter import.
+
+## Deck-first sync
+`--my-decks` (or the window's tick-box) points the deck filter at `<edopro>/deck`, scanned recursively for `.ydk`. On a fresh install (>2,000 cards indexed, <500 images on disk) the console flow asks "Quick start: only sync the cards in your N deck(s)?" before committing to a full ~13,000-card download.
 
 ## Architecture
 

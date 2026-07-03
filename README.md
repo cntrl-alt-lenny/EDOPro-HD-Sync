@@ -32,6 +32,7 @@
 
 ## Why It Feels Better
 
+- **Tick-box launcher** - the packaged app opens a small options window on Windows, macOS, and Linux: pick field art, only-my-decks, textures, repair, or a full refresh, then press Start
 - **Every card type covered** - official, Rush Duel, and anime/custom cards are all fetched directly by ID
 - **Field Spell playmat art** - downloads the cropped artwork EDOPro displays on the board into `pics/field/`
 - **Self-updating launchers** - one double-clickable file per platform that installs new versions automatically
@@ -88,6 +89,8 @@ Scans all `.cdb` card databases in your EDOPro folder and tries each card's ID d
 
 - `python main.py --health-check` runs an offline sanity check for suffix-stripping and Pre-Errata matching
 - `python main.py --stats` shows artwork coverage and disk usage without downloading anything
+- `python main.py --my-decks` only syncs cards used in your EDOPro deck folder (much faster)
+- `python main.py --gui` opens the tick-box options window (the packaged app does this automatically; `--no-gui` skips it)
 - `python main.py --dry-run` previews what would be downloaded
 - `python main.py --repair` re-downloads any images in `pics/` (and `pics/field/`) that are corrupt or incomplete
 - `python main.py --no-field-art` skips the Field Spell playmat artwork
