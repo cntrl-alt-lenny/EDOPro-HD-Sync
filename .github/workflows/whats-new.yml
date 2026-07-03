@@ -1,8 +1,8 @@
 name: Update What's New panel
 
-# Regenerates the README's "What's New" card (assets/whats-new.svg) from the
-# commits between the two most recent version tags, and commits it to main.
-# Runs on every release tag push, so the panel always shows the latest release.
+# Regenerates the README's release visuals (assets/whats-new.svg and
+# assets/release-history.svg) from git history and commits them to main.
+# Runs on every release tag push, so the panels always show the latest release.
 
 permissions:
   contents: write
@@ -22,14 +22,14 @@ jobs:
         ref: main
         fetch-depth: 0
 
-    - name: Regenerate the panel
+    - name: Regenerate the panels
       run: python3 tools/build_whats_new.py
 
     - name: Commit and push if changed
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add assets/whats-new.svg
+        git add assets/whats-new.svg assets/release-history.svg
         if git diff --cached --quiet; then
           echo "Panel already up to date."
         else

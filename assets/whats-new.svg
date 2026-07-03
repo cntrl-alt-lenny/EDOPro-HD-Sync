@@ -1,29 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 345" width="760" height="345" role="img" aria-label="What's new in EDOPro HD Sync v4.10.0">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 361" width="760" height="361" role="img" aria-label="What's new in EDOPro HD Sync v4.10.0">
   <style>
     text { font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
     .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 2.5px; fill: #7f89a6; }
     .title { font-size: 26px; font-weight: 700; fill: #f3f6ff; }
     .title-version { fill: #ffd76a; }
-    .pill-text { font-size: 14px; font-weight: 700; fill: #ffd76a; }
     .date { font-size: 12.5px; fill: #7f89a6; }
-    .bullet { font-size: 15.5px; fill: #d7deee; }
     .foot { font-size: 12px; fill: #6d7690; }
     /* Slide-in only — never animate opacity here. A static renderer (README
-       thumbnailers, some mobile apps) shows frame zero, so bullets must be
+       thumbnailers, some mobile apps) shows frame zero, so content must be
        fully visible in that frame. */
     .item { animation: rise 0.5s ease-out backwards; }
-    .spark { animation: pulse 2.6s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
-    .spark2 { animation-delay: 1.3s; }
     @keyframes rise {
       from { transform: translateY(9px); }
     }
+    @media (prefers-reduced-motion: reduce) {
+      .item { animation: none; }
+    }
+    .bullet { font-size: 15px; fill: #d7deee; }
+    .stats { font-size: 12.5px; fill: #8b94ad; }
+    .spark { animation: pulse 2.6s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+    .spark2 { animation-delay: 1.3s; }
     @keyframes pulse {
       0%, 100% { opacity: 0.25; transform: scale(0.8); }
       50%      { opacity: 1; transform: scale(1.1); }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .item { animation: none; }
-      .spark { animation: none; }
     }
   </style>
   <defs>
@@ -41,42 +40,48 @@
     </radialGradient>
   </defs>
 
-  <rect x="1" y="1" width="758" height="343" rx="16" fill="url(#bg)" stroke="#2a3554"/>
-  <rect x="1" y="1" width="758" height="343" rx="16" fill="url(#glow)"/>
+  <rect x="1" y="1" width="758" height="359" rx="16" fill="url(#bg)" stroke="#2a3554"/>
+  <rect x="1" y="1" width="758" height="359" rx="16" fill="url(#glow)"/>
 
   <text x="30" y="36" class="eyebrow">EDOPRO HD SYNC · LATEST RELEASE</text>
   <text x="30" y="68" class="title">What’s New in <tspan class="title-version">v4.10.0</tspan></text>
   <rect x="30" y="82" width="122" height="3" rx="1.5" fill="url(#gold)"/>
+  <text x="30" y="105" class="stats">6 commits · 19 files changed · +689 / −89 lines</text>
 
   <path class="spark" d="M 611 23 l 3.2 7.8 7.8 3.2 -7.8 3.2 -3.2 7.8 -3.2 -7.8 -7.8 -3.2 7.8 -3.2 Z" fill="url(#gold)"/>
   <path class="spark spark2" d="M 583 37 l 2.1 5 5 2 -5 2 -2.1 5 -2.1 -5 -5 -2 5 -2 Z" fill="url(#gold)"/>
 
   <rect x="645" y="24" width="87" height="27" rx="13.5" fill="none" stroke="url(#gold)"/>
-  <text x="688.5" y="42.5" class="pill-text" text-anchor="middle">v4.10.0</text>
+  <text x="688.5" y="42.5" text-anchor="middle" style="font-size:14px;font-weight:700" fill="#ffd76a">v4.10.0</text>
   <text x="732" y="68" class="date" text-anchor="end">Released July 3, 2026</text>
 
   <g class="item" style="animation-delay:150ms">
-    <rect x="30" y="111" width="9" height="9" rx="2" transform="rotate(45 34.5 115.5)" fill="url(#gold)"/>
-    <text x="52" y="121" class="bullet">Enable Dependabot dependency alerts</text>
+    <rect x="30" y="120" width="42" height="17" rx="8.5" fill="none" stroke="#ffd76a"/>
+    <text x="51" y="132" text-anchor="middle" style="font-size:9px;font-weight:700;letter-spacing:0.8px" fill="#ffd76a">NEW</text>
+    <text x="86" y="133" class="bullet">Enable Dependabot dependency alerts</text>
   </g>
-  <g class="item" style="animation-delay:270ms">
-    <rect x="30" y="144" width="9" height="9" rx="2" transform="rotate(45 34.5 148.5)" fill="url(#gold)"/>
-    <text x="52" y="154" class="bullet">Add a self-updating What's New panel to the README</text>
+  <g class="item" style="animation-delay:260ms">
+    <rect x="30" y="153" width="42" height="17" rx="8.5" fill="none" stroke="#ffd76a"/>
+    <text x="51" y="165" text-anchor="middle" style="font-size:9px;font-weight:700;letter-spacing:0.8px" fill="#ffd76a">NEW</text>
+    <text x="86" y="166" class="bullet">Add a self-updating What's New panel to the README</text>
   </g>
-  <g class="item" style="animation-delay:390ms">
-    <rect x="30" y="177" width="9" height="9" rx="2" transform="rotate(45 34.5 181.5)" fill="url(#gold)"/>
-    <text x="52" y="187" class="bullet">Launchers now auto-update the app on new releases</text>
+  <g class="item" style="animation-delay:370ms">
+    <rect x="30" y="186" width="42" height="17" rx="8.5" fill="none" stroke="#ffd76a"/>
+    <text x="51" y="198" text-anchor="middle" style="font-size:9px;font-weight:700;letter-spacing:0.8px" fill="#ffd76a">NEW</text>
+    <text x="86" y="199" class="bullet">Launchers now auto-update the app on new releases</text>
   </g>
-  <g class="item" style="animation-delay:510ms">
-    <rect x="30" y="210" width="9" height="9" rx="2" transform="rotate(45 34.5 214.5)" fill="url(#gold)"/>
-    <text x="52" y="220" class="bullet">Validate config suffixes and remove dead code</text>
+  <g class="item" style="animation-delay:480ms">
+    <rect x="30" y="219" width="42" height="17" rx="8.5" fill="none" stroke="#7ee2a8"/>
+    <text x="51" y="231" text-anchor="middle" style="font-size:9px;font-weight:700;letter-spacing:0.8px" fill="#7ee2a8">FIX</text>
+    <text x="86" y="232" class="bullet">Validate config suffixes and remove dead code</text>
   </g>
-  <g class="item" style="animation-delay:630ms">
-    <rect x="30" y="243" width="9" height="9" rx="2" transform="rotate(45 34.5 247.5)" fill="url(#gold)"/>
-    <text x="52" y="253" class="bullet">Fix download caching, dry-run totals, and texture re-downloads</text>
+  <g class="item" style="animation-delay:590ms">
+    <rect x="30" y="252" width="42" height="17" rx="8.5" fill="none" stroke="#7ee2a8"/>
+    <text x="51" y="264" text-anchor="middle" style="font-size:9px;font-weight:700;letter-spacing:0.8px" fill="#7ee2a8">FIX</text>
+    <text x="86" y="265" class="bullet">Fix download caching, dry-run totals, and texture re-downloads</text>
   </g>
 
-  <line x1="30" y1="303" x2="730" y2="303" stroke="#232d4a"/>
-  <text x="30" y="319" class="foot">This panel updates automatically with every release</text>
-  <text x="732" y="319" class="foot" text-anchor="end">See all releases →</text>
+  <line x1="30" y1="319" x2="730" y2="319" stroke="#232d4a"/>
+  <text x="30" y="335" class="foot">This panel updates automatically with every release</text>
+  <text x="732" y="335" class="foot" text-anchor="end">See all releases →</text>
 </svg>

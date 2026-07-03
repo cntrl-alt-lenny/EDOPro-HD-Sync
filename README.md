@@ -24,6 +24,12 @@
   </a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases">
+    <img src="assets/release-history.svg" alt="Release activity: lines added per release" width="760">
+  </a>
+</p>
+
 ## Why It Feels Better
 
 - **Tries every card ID directly** - no startup catalog download, just simple direct requests
