@@ -18,7 +18,7 @@ folder, and run ./EDOPro-HD-Sync.sh from there.
 
 Helpful notes
 -------------
-- The launcher downloads the latest binary automatically if EDOPro-HD-Sync-Linux is missing.
+- The launcher downloads the app automatically and keeps it up to date when new versions are released.
 - It downloads only missing artwork by default (fast). To re-download everything, answer "y" when it offers a full refresh, or run with --force.
 - It remembers your chosen EDOPro folder for next time.
 - The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.

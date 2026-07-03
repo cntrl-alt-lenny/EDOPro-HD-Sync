@@ -11,6 +11,7 @@ APP_NAME="EDOPro-HD-Sync-macOS"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SUPPORT_DIR="$HOME/Library/Application Support/EDOPro-HD-Sync"
 PREFS="$SUPPORT_DIR/edopro_folder.txt"
+INSTALLED_FILE="$SUPPORT_DIR/binary_version.txt"
 REPO_API="https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest"
 
 mkdir -p "$SUPPORT_DIR"
@@ -54,18 +55,24 @@ end try
 OSA
 }
 
-# --- Download the app if we don't have it yet ---
-if [ ! -x "$BINARY" ]; then
-    BIN_DIR="$(dirname "$BINARY")"
-    echo "Setting up EDOPro HD Sync (first run)..."
-    ASSET_INFO="$(python3 - "$REPO_API" <<'PY'
+# Ask GitHub for the latest release (tag + download links). Quietly does
+# nothing when offline so the cached app still runs without internet.
+LATEST_TAG=""
+ZIP_URL=""
+SHA_URL=""
+fetch_release_info() {
+    local info
+    info="$(python3 - "$REPO_API" <<'PY'
 import json
 import sys
 import urllib.request
 
 api_url = sys.argv[1]
-with urllib.request.urlopen(api_url, timeout=20) as response:
-    data = json.load(response)
+try:
+    with urllib.request.urlopen(api_url, timeout=10) as response:
+        data = json.load(response)
+except Exception:
+    sys.exit(0)
 
 zip_url = ""
 sha_url = ""
@@ -76,14 +83,34 @@ for asset in data.get("assets", []):
     elif name.startswith("EDOPro-HD-Sync-macOS-v") and name.endswith(".zip.sha256"):
         sha_url = asset["browser_download_url"]
 
+print(data.get("tag_name", ""))
 print(zip_url)
 print(sha_url)
 PY
 )"
-    ZIP_URL="$(printf '%s\n' "$ASSET_INFO" | sed -n '1p')"
-    SHA_URL="$(printf '%s\n' "$ASSET_INFO" | sed -n '2p')"
+    LATEST_TAG="$(printf '%s\n' "$info" | sed -n '1p')"
+    ZIP_URL="$(printf '%s\n' "$info" | sed -n '2p')"
+    SHA_URL="$(printf '%s\n' "$info" | sed -n '3p')"
+}
+
+# --- Keep the app up to date (only the copy this launcher manages) ---
+if [ "$BINARY" = "$SUPPORT_DIR/$APP_NAME" ]; then
+    fetch_release_info
+    if [ -x "$BINARY" ] && [ -n "$LATEST_TAG" ]; then
+        installed="$(cat "$INSTALLED_FILE" 2>/dev/null)"
+        if [ "$installed" != "$LATEST_TAG" ]; then
+            echo "A new version ($LATEST_TAG) is available — updating..."
+            rm -f "$BINARY"
+        fi
+    fi
+fi
+
+# --- Download the app if we don't have it yet ---
+if [ ! -x "$BINARY" ]; then
+    BIN_DIR="$(dirname "$BINARY")"
+    echo "Setting up EDOPro HD Sync..."
     if [ -z "$ZIP_URL" ]; then
-        echo "Could not find the latest macOS download in the GitHub release."
+        echo "Could not find the latest macOS download. Check your internet connection."
         exit 1
     fi
     if ! curl -L --progress-bar "$ZIP_URL" -o "$BIN_DIR/_tmp.zip"; then
@@ -122,6 +149,7 @@ PY
         exit 1
     fi
     chmod +x "$BINARY"
+    printf '%s\n' "$LATEST_TAG" > "$INSTALLED_FILE"
     echo ""
 fi
 

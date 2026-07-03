@@ -18,6 +18,7 @@ folder, run EDOPro-HD-Sync.exe, and pick your EDOPro folder when asked.
 
 Helpful notes
 -------------
+- The one-file launcher keeps the app up to date automatically: when a new version is released, it downloads it on the next run.
 - It downloads only missing artwork by default (fast). To re-download everything, answer "y" when it offers a full refresh, or run with --force.
 - The tool remembers your chosen EDOPro folder in config.json beside the exe.
 - The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.

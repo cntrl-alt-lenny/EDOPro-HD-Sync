@@ -13,12 +13,30 @@ $Api = 'https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases/lat
 $UA = 'EDOPro-HD-Sync-Launcher'
 
 New-Item -ItemType Directory -Force -Path $SupportDir | Out-Null
+$InstalledFile = Join-Path $SupportDir 'binary_version.txt'
+
+# One quick release check: used for the first download and to spot updates.
+# When GitHub is unreachable the cached app still runs.
+$rel = $null
+try {
+    $rel = Invoke-RestMethod -UseBasicParsing -UserAgent $UA -Uri $Api -TimeoutSec 15
+} catch { }
+
+# Update the cached app when a newer release is out.
+if ((Test-Path -LiteralPath $Binary) -and $rel -and $rel.tag_name) {
+    $installed = ''
+    if (Test-Path -LiteralPath $InstalledFile) {
+        $installed = (Get-Content -LiteralPath $InstalledFile -Raw).Trim()
+    }
+    if ($installed -ne $rel.tag_name) {
+        Write-Host "A new version ($($rel.tag_name)) is available - updating..."
+        Remove-Item -LiteralPath $Binary -Force -ErrorAction SilentlyContinue
+    }
+}
 
 if (-not (Test-Path -LiteralPath $Binary)) {
-    Write-Host 'Setting up EDOPro HD Sync (first run)...'
-    try {
-        $rel = Invoke-RestMethod -UseBasicParsing -UserAgent $UA -Uri $Api -TimeoutSec 30
-    } catch {
+    Write-Host 'Setting up EDOPro HD Sync...'
+    if (-not $rel) {
         Write-Host 'Could not reach GitHub. Check your internet connection.'
         exit 1
     }
@@ -56,6 +74,7 @@ if (-not (Test-Path -LiteralPath $Binary)) {
         exit 1
     }
     Copy-Item -LiteralPath $exe.FullName -Destination $Binary -Force
+    Set-Content -LiteralPath $InstalledFile -Value $rel.tag_name
     Remove-Item -LiteralPath $tmpZip -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction SilentlyContinue
 }
