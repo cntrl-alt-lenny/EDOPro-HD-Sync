@@ -26,14 +26,15 @@
 
 <p align="center">
   <a href="https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases">
-    <img src="assets/release-history.svg" alt="Release activity: lines added per release" width="760">
+    <img src="assets/release-history.svg" alt="Release history: what each release added" width="760">
   </a>
 </p>
 
 ## Why It Feels Better
 
-- **Tries every card ID directly** - no startup catalog download, just simple direct requests
-- **Truthful alternate-art handling** - falls back to ProjectIgnis when YGOProDeck doesn't have the art
+- **Every card type covered** - official, Rush Duel, and anime/custom cards are all fetched directly by ID
+- **Field Spell playmat art** - downloads the cropped artwork EDOPro displays on the board into `pics/field/`
+- **Self-updating launchers** - one double-clickable file per platform that installs new versions automatically
 - **Offline health check** - quickly verifies suffix-stripping logic
 - **Simple packaged releases** - ready-to-use downloads for Windows, macOS, and Linux
 - **Curated textures** - optionally fetch a hand-picked set of backgrounds and card sleeves
@@ -75,9 +76,10 @@ python main.py --health-check
 
 ## How It Works
 
-Scans all `.cdb` card databases in your EDOPro folder, tries each card's ID directly on [YGOProDeck](https://ygoprodeck.com), and falls back to [ProjectIgnis](https://github.com/ProjectIgnis/Images) when the HD image isn't available.
+Scans all `.cdb` card databases in your EDOPro folder and tries each card's ID directly on [YGOProDeck](https://ygoprodeck.com) — official, Rush Duel, and anime/custom cards are all hosted there under the same IDs EDOPro uses.
 
-- **Alternate artworks** - each art ID is tried individually on YGOProDeck; if it 404s, ProjectIgnis provides the backup
+- **Field Spells** - the playmat (cropped) artwork is fetched into `pics/field/` automatically
+- **Alternate artworks** - each art ID is tried individually
 - **GOAT format cards** - matched to their official artwork by stripping the GOAT suffix
 - **Pre-Errata cards** - resolved via suffix stripping, with a small ID-offset fallback for legacy edge cases
 - **Manual overrides** - optional `manual_map.json` for edge cases
@@ -85,8 +87,10 @@ Scans all `.cdb` card databases in your EDOPro folder, tries each card's ID dire
 ## Helpful Commands
 
 - `python main.py --health-check` runs an offline sanity check for suffix-stripping and Pre-Errata matching
+- `python main.py --stats` shows artwork coverage and disk usage without downloading anything
 - `python main.py --dry-run` previews what would be downloaded
-- `python main.py --repair` re-downloads any images in `pics/` that are corrupt or incomplete
+- `python main.py --repair` re-downloads any images in `pics/` (and `pics/field/`) that are corrupt or incomplete
+- `python main.py --no-field-art` skips the Field Spell playmat artwork
 - `python main.py --textures` also downloads the curated texture pack (custom backgrounds and card sleeves) into `textures/` (the packaged app asks about this too)
 - `python main.py --textures-pack NAME` picks a specific texture pack when more than one is available
 - `python main.py --edopro-path "/path/to/ProjectIgnis"` points the tool at a specific folder
