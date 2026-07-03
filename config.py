@@ -277,14 +277,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 class Config:
-    """Immutable bag of settings built from defaults to file to CLI."""
+    """Bag of settings built from defaults, then config.json, then CLI flags."""
 
     def __init__(self, argv: list[str] | None = None):
         parser = _build_parser()
         self.argv: list[str] = list(sys.argv[1:] if argv is None else argv)
-        self.explicit_cli_options: set[str] = {
-            arg.split("=", 1)[0] for arg in self.argv if arg.startswith("-")
-        }
         self.cli = parser.parse_args(self.argv)
         default_config_base = sys.executable if getattr(sys, "frozen", False) else __file__
         self.config_path: str = (
@@ -347,7 +344,11 @@ class Config:
         elif file_sources is not None:
             print("Warning: sources must be an object; using defaults.")
         self.sources: dict = sources
-        self.suffixes: list = file_cfg.get("suffixes_to_strip", DEFAULTS["suffixes_to_strip"])
+        suffixes = file_cfg.get("suffixes_to_strip", DEFAULTS["suffixes_to_strip"])
+        if not (isinstance(suffixes, list) and all(isinstance(s, str) for s in suffixes)):
+            print("Warning: suffixes_to_strip must be a list of strings; using defaults.")
+            suffixes = DEFAULTS["suffixes_to_strip"]
+        self.suffixes: list = suffixes
 
         self.force: bool = _ensure_bool(
             "force",
@@ -389,7 +390,3 @@ class Config:
         if save:
             return save_edopro_path(self.config_path, self.edopro_path)
         return True
-
-    def has_explicit_cli_option(self, *options: str) -> bool:
-        """Return True when any of the provided options were passed on the command line."""
-        return any(option in self.explicit_cli_options for option in options)
