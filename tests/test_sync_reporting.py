@@ -138,6 +138,27 @@ class SyncReportingTests(unittest.TestCase):
         self.assertEqual(stats.token_failures, [])
         self.assertEqual(len(stats.official_failures), 3)
 
+    def test_dry_run_summary_counts_planned_downloads(self):
+        stats = main.DownloadStats()
+        stats.planned = 7
+        stats.skipped = 2
+        cfg = self.make_cfg(dry_run=True)
+
+        rows = main._build_summary_rows(stats, cfg, 5.0)
+
+        self.assertIn(("Would download", "7", None), rows)
+        self.assertIn(("Already on disk", "2", "dim"), rows)
+
+    def test_transient_failures_get_their_own_row_and_leave_official_bucket(self):
+        stats = main.DownloadStats()
+        stats.record_failure(46986414, "Dark Magician", transient=True)
+        cfg = self.make_cfg(quiet=True)
+
+        rows = main._build_summary_rows(stats, cfg, 5.0)
+
+        self.assertIn(("  Network errors", "1", "dim"), rows)
+        self.assertEqual(stats.official_failures, [])
+
     def test_summary_includes_token_breakdown_row(self):
         stats = main.DownloadStats()
         stats.record_failure(42427231, "Machine Token")

@@ -20,6 +20,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from datetime import datetime
+from enum import Enum
 from time import perf_counter
 
 import aiohttp
@@ -624,8 +625,10 @@ class DownloadStats:
         self.official_backup = 0
         self.official_ok = 0
         self.skipped = 0
+        self.planned = 0
         self.failed = 0
         self.failed_cards: list[tuple[int, str]] = []
+        self.transient_ids: set[int] = set()
         self.unexpected_errors: list[tuple[int, str, str]] = []
         self._rush_ids: set[int] = rush_ids or set()
 
@@ -634,13 +637,24 @@ class DownloadStats:
         return self.ok_hd + self.ok_mapped + self.ok_fallback
 
     @property
+    def transient_failures(self) -> int:
+        """Cards that failed because of network trouble, not because art is missing."""
+        return len(self.transient_ids)
+
+    @property
     def rush_failures(self) -> int:
-        return sum(1 for cid, _ in self.failed_cards if cid in self._rush_ids)
+        return sum(
+            1
+            for cid, _ in self.failed_cards
+            if cid in self._rush_ids and cid not in self.transient_ids
+        )
 
     @property
     def unofficial_failures(self) -> int:
         return sum(
-            1 for cid, _ in self.failed_cards if cid >= 100_000_000 and cid not in self._rush_ids
+            1
+            for cid, _ in self.failed_cards
+            if cid >= 100_000_000 and cid not in self._rush_ids and cid not in self.transient_ids
         )
 
     @property
@@ -655,7 +669,10 @@ class DownloadStats:
         return [
             (cid, name)
             for cid, name in self.failed_cards
-            if cid < 100_000_000 and cid not in self._rush_ids and _is_token_name(name)
+            if cid < 100_000_000
+            and cid not in self._rush_ids
+            and cid not in self.transient_ids
+            and _is_token_name(name)
         ]
 
     @property
@@ -664,7 +681,10 @@ class DownloadStats:
         return [
             (cid, name)
             for cid, name in self.failed_cards
-            if cid < 100_000_000 and cid not in self._rush_ids and not _is_token_name(name)
+            if cid < 100_000_000
+            and cid not in self._rush_ids
+            and cid not in self.transient_ids
+            and not _is_token_name(name)
         ]
 
     def record_success(self, card_id: int, counter_name: str) -> None:
@@ -674,9 +694,11 @@ class DownloadStats:
             if counter_name == "ok_fallback":
                 self.official_backup += 1
 
-    def record_failure(self, card_id: int, name: str) -> None:
+    def record_failure(self, card_id: int, name: str, transient: bool = False) -> None:
         self.failed += 1
         self.failed_cards.append((card_id, name))
+        if transient:
+            self.transient_ids.add(card_id)
 
     def record_unexpected_error(self, card_id: int, name: str, exc: BaseException) -> None:
         self.unexpected_errors.append((card_id, name, f"{type(exc).__name__}: {exc}"))
@@ -755,6 +777,21 @@ def _parse_retry_after(value: str | None) -> float | None:
     return min(seconds, RETRY_AFTER_CAP_SECONDS)
 
 
+class FetchResult(Enum):
+    """Outcome of one download attempt chain.
+
+    MISSING means the server definitively said the image does not exist (404),
+    so it's safe to remember the card as unavailable. ERROR covers transient
+    trouble — timeouts, connection drops, rate limiting, 5xx, disk errors —
+    which must NOT be cached, or one bad Wi-Fi day would mark hundreds of
+    cards "unavailable" for two weeks.
+    """
+
+    OK = "ok"
+    MISSING = "missing"
+    ERROR = "error"
+
+
 async def _try_download(
     session: aiohttp.ClientSession,
     url: str,
@@ -762,7 +799,7 @@ async def _try_download(
     timeout: aiohttp.ClientTimeout,
     max_retries: int,
     is_valid: Callable[[bytes], bool] = _looks_like_jpeg,
-) -> bool:
+) -> FetchResult:
     """
     Attempt to GET `url` and save to `filepath`.
     Retries up to `max_retries` times with exponential backoff.
@@ -779,11 +816,13 @@ async def _try_download(
                         with open(tmp_path, "wb") as file_obj:
                             file_obj.write(content)
                         os.replace(tmp_path, filepath)
-                        return True
+                        return FetchResult.OK
                     if attempt >= max_retries:
-                        return False
+                        # A 200 with a non-image body is usually an error or
+                        # anti-bot page, so treat it as transient.
+                        return FetchResult.ERROR
                 elif resp.status == 404:
-                    return False
+                    return FetchResult.MISSING
                 elif resp.status == 429:
                     # Rate limited — wait the server's requested cooldown (capped)
                     # before retrying instead of the usual short backoff.
@@ -793,14 +832,14 @@ async def _try_download(
         except OSError as exc:
             console.print(f"[red]Cannot write to {filepath}: {exc}[/red]")
             _remove_quietly(tmp_path)
-            return False
+            return FetchResult.ERROR
 
         if attempt < max_retries:
             delay = retry_after if retry_after is not None else 2 ** (attempt - 1)
             await asyncio.sleep(delay)
 
     _remove_quietly(tmp_path)
-    return False
+    return FetchResult.ERROR
 
 
 def _remove_quietly(path: str) -> None:
@@ -858,29 +897,40 @@ async def download_card(
             candidates.append(("pre-errata-offset", f"{official_source}/{offset_id}.jpg"))
 
     if cfg.dry_run:
+        stats.planned += 1
         tag = candidates[0][0] if candidates else "fallback"
         console.print(f"  [dim]Would download:[/dim] {name} ({card_id}) via {tag}")
         if progress and task_id is not None:
             progress.advance(task_id)
         return
 
+    # Only cache the card as unavailable when every source said MISSING; any
+    # transient error means it may well exist and should be retried next run.
+    saw_transient = False
+
     for reason, url in candidates:
-        if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+        result = await _try_download(session, url, filepath, timeout, cfg.max_retries)
+        if result is FetchResult.OK:
             stats.record_success(card_id, "ok_mapped" if reason == "manual-map" else "ok_hd")
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
+        if result is FetchResult.ERROR:
+            saw_transient = True
 
     # 5. ProjectIgnis backup
     if "backup" in cfg.sources:
         url = f"{cfg.sources['backup']}/{card_id}.jpg"
-        if await _try_download(session, url, filepath, timeout, cfg.max_retries):
+        result = await _try_download(session, url, filepath, timeout, cfg.max_retries)
+        if result is FetchResult.OK:
             stats.record_success(card_id, "ok_fallback")
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
+        if result is FetchResult.ERROR:
+            saw_transient = True
 
-    stats.record_failure(card_id, name)
+    stats.record_failure(card_id, name, transient=saw_transient)
     if progress and task_id is not None:
         progress.advance(task_id)
 
@@ -896,28 +946,29 @@ def _textures_release_api(pack: str | None) -> str:
 
 async def download_curated_textures(
     session: aiohttp.ClientSession, cfg: Config, pack: str | None = None
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Download a curated texture pack into <edopro>/textures/.
 
     Textures aren't on a card database, so they're published as assets on a
     dedicated GitHub release ("textures", or "textures-<pack>" for extra packs).
-    Returns (downloaded, total_available).
+    Files already on disk are kept (unless --force), so repeat runs are quick.
+    Returns (downloaded, skipped, total_available).
     """
     try:
         timeout = aiohttp.ClientTimeout(total=15)
         async with session.get(_textures_release_api(pack), timeout=timeout) as resp:
             if resp.status == 404:
                 console.print("[yellow]No curated textures have been published yet.[/yellow]")
-                return (0, 0)
+                return (0, 0, 0)
             if resp.status != 200:
                 console.print(
                     f"[yellow]Could not fetch the curated texture list (HTTP {resp.status}).[/yellow]"
                 )
-                return (0, 0)
+                return (0, 0, 0)
             data = await resp.json()
     except Exception as exc:
         console.print(f"[yellow]Could not fetch the curated texture list: {exc}[/yellow]")
-        return (0, 0)
+        return (0, 0, 0)
 
     assets = [
         a
@@ -929,17 +980,22 @@ async def download_curated_textures(
     ]
     if not assets:
         console.print("[yellow]No curated textures have been published yet.[/yellow]")
-        return (0, 0)
+        return (0, 0, 0)
 
     textures_dir = os.path.join(cfg.edopro_path, "textures")
     os.makedirs(textures_dir, exist_ok=True)
     # Textures can be large (multi-MB backgrounds), so allow extra time.
     timeout = aiohttp.ClientTimeout(total=max(cfg.timeout, 120))
     downloaded = 0
+    skipped = 0
+    force = getattr(cfg, "force", False)
     for asset in assets:
         name = os.path.basename(asset["name"])  # guard against odd asset names
         dest = os.path.join(textures_dir, name)
-        ok = await _try_download(
+        if not force and os.path.exists(dest):
+            skipped += 1
+            continue
+        result = await _try_download(
             session,
             asset["browser_download_url"],
             dest,
@@ -947,12 +1003,12 @@ async def download_curated_textures(
             cfg.max_retries,
             is_valid=_looks_like_image,
         )
-        if ok:
+        if result is FetchResult.OK:
             downloaded += 1
             console.print(f"  [dim]downloaded {name}[/dim]")
         else:
             console.print(f"  [yellow]could not download {name}[/yellow]")
-    return (downloaded, len(assets))
+    return (downloaded, skipped, len(assets))
 
 
 async def list_texture_packs(session: aiohttp.ClientSession) -> list[tuple[str, str]]:
@@ -1036,7 +1092,7 @@ def _build_summary_rows(
     """Build the rows shown in the terminal summary."""
     rows: list[tuple[str, str, str | None]] = []
     if cfg.dry_run:
-        rows.append(("Would download", f"{max(stats.total_ok + stats.failed, 0):,}", None))
+        rows.append(("Would download", f"{stats.planned:,}", None))
         if stats.skipped:
             rows.append(("Already on disk", f"{stats.skipped:,}", "dim"))
     else:
@@ -1059,6 +1115,8 @@ def _build_summary_rows(
                 rows.append(("  Tokens / placeholders", f"{len(tokens):,}", "dim"))
             if official:
                 rows.append(("  Official", f"{len(official):,}", "dim"))
+            if stats.transient_failures:
+                rows.append(("  Network errors", f"{stats.transient_failures:,}", "dim"))
         rows.append(("Time", format_duration(runtime_seconds), None))
         rows.append(("Speed", format_rate(stats.total_ok, runtime_seconds), None))
     return rows
@@ -1101,6 +1159,9 @@ def _write_report(stats: DownloadStats, cfg: Config, runtime_seconds: float) -> 
                     f.write(f"  Anime / fan-made:      {unofficial:,}\n")
                 if tokens:
                     f.write(f"  Tokens / placeholders: {len(tokens):,}\n")
+                if stats.transient_failures:
+                    f.write(f"  Network errors:        {stats.transient_failures:,}")
+                    f.write("  (will be retried automatically next run)\n")
                 if official:
                     f.write(f"  Official cards:        {len(official):,}\n")
                     f.write("\nOfficial cards that could not be found:\n")
@@ -1109,6 +1170,13 @@ def _write_report(stats: DownloadStats, cfg: Config, runtime_seconds: float) -> 
                         f.write(f"  {card_id}\t{card_name}\n")
             else:
                 f.write("\nAll cards downloaded successfully.\n")
+
+            if stats.unexpected_errors:
+                f.write(f"\n{'=' * 40}\n")
+                f.write("Unexpected Errors\n")
+                f.write(f"{'=' * 40}\n")
+                for card_id, card_name, detail in stats.unexpected_errors:
+                    f.write(f"  {card_id}\t{card_name}\n    {detail}\n")
         console.print(f"[dim]Report saved to: {report_path}[/dim]")
     except OSError as exc:
         console.print(f"[yellow]Could not write sync report: {exc}[/yellow]")
@@ -1133,6 +1201,21 @@ def print_summary(
         else:
             console.print(f"  {label:<{label_width}} {formatted}")
     console.rule()
+
+    if stats.transient_failures and not cfg.dry_run:
+        console.print(
+            f"[yellow]{stats.transient_failures:,} download(s) failed due to network problems — "
+            "they will be retried automatically on the next run.[/yellow]"
+        )
+
+    if stats.unexpected_errors:
+        console.print(
+            f"[bold red]{len(stats.unexpected_errors)} unexpected error(s) occurred:[/bold red]"
+        )
+        for _cid, card_name, detail in stats.unexpected_errors[:3]:
+            console.print(f"  [red]{card_name}: {detail}[/red]")
+        if len(stats.unexpected_errors) > 3:
+            console.print("  [dim]...more in the sync report (--save-report)[/dim]")
 
     if cfg.dry_run:
         return
@@ -1357,7 +1440,6 @@ async def run(cfg: Config):
     connector = aiohttp.TCPConnector(
         limit=cfg.concurrency,
         limit_per_host=min(cfg.concurrency, 25),
-        enable_cleanup_closed=True,
         ssl=ssl_ctx,
     )
 
@@ -1406,7 +1488,8 @@ async def run(cfg: Config):
                     except asyncio.CancelledError:
                         raise
                     except Exception as exc:
-                        stats.record_failure(card_id, name)
+                        # A crash proves nothing about availability — don't cache it.
+                        stats.record_failure(card_id, name, transient=True)
                         stats.record_unexpected_error(card_id, name, exc)
                         if progress and task_id is not None:
                             progress.advance(task_id)
@@ -1433,10 +1516,11 @@ async def run(cfg: Config):
         if want_textures and not cfg.dry_run:
             pack = await _resolve_texture_pack(session, cfg)
             console.print(f"\n[bold cyan]Downloading curated textures ({pack})...[/bold cyan]")
-            got, total = await download_curated_textures(session, cfg, pack)
+            got, already, total = await download_curated_textures(session, cfg, pack)
             if total:
+                skipped_note = f", {already} already on disk" if already else ""
                 console.print(
-                    f"[green]Curated textures: {got}/{total} downloaded[/green] "
+                    f"[green]Curated textures: {got}/{total} downloaded{skipped_note}[/green] "
                     f"[dim]-> {os.path.join(cfg.edopro_path, 'textures')}[/dim]"
                 )
         elif want_textures and cfg.dry_run:
@@ -1445,7 +1529,9 @@ async def run(cfg: Config):
     if missing_ids and not cfg.dry_run:
         now_ts = datetime.now().timestamp()
         for cid, _ in stats.failed_cards:
-            failure_cache[cid] = now_ts
+            # Only remember definitive misses; network hiccups retry next run.
+            if cid not in stats.transient_ids:
+                failure_cache[cid] = now_ts
         # Forget cached entries whose image is on disk now (e.g. after a recheck).
         for cid in list(failure_cache.keys()):
             if os.path.exists(os.path.join(cfg.pics_path, f"{cid}.jpg")):
@@ -1497,6 +1583,8 @@ def main() -> int:
         cfg = Config()
 
         if sys.platform == "win32":
+            # Deprecated as of Python 3.14 — revisit when bumping past the
+            # pinned 3.11 build (aiohttp needs the selector loop on Windows).
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
         asyncio.run(run(cfg))

@@ -67,7 +67,9 @@ class CuratedTexturesTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.cfg = types.SimpleNamespace(edopro_path=self.tmp.name, timeout=30, max_retries=1)
+        self.cfg = types.SimpleNamespace(
+            edopro_path=self.tmp.name, timeout=30, max_retries=1, force=False
+        )
         patcher = mock.patch.object(main.asyncio, "sleep", new=mock.AsyncMock())
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -82,9 +84,9 @@ class CuratedTexturesTests(unittest.TestCase):
                 {"name": "cover.png", "browser_download_url": "http://x/cover.png"},
             ]
         }
-        got, total = self._run(_Session(release))
+        got, skipped, total = self._run(_Session(release))
 
-        self.assertEqual((got, total), (2, 2))
+        self.assertEqual((got, skipped, total), (2, 0, 2))
         textures = os.path.join(self.tmp.name, "textures")
         self.assertTrue(os.path.exists(os.path.join(textures, "bg.png")))
         self.assertTrue(os.path.exists(os.path.join(textures, "cover.png")))
@@ -96,9 +98,9 @@ class CuratedTexturesTests(unittest.TestCase):
                 {"name": "manifest.json", "browser_download_url": "http://x/manifest.json"},
             ]
         }
-        got, total = self._run(_Session(release))
+        got, skipped, total = self._run(_Session(release))
 
-        self.assertEqual((got, total), (1, 1))
+        self.assertEqual((got, skipped, total), (1, 0, 1))
         self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "textures", "manifest.json")))
 
     def test_returns_zero_when_release_not_published(self):
@@ -106,15 +108,43 @@ class CuratedTexturesTests(unittest.TestCase):
             def get(self, url, timeout=None):
                 return _Resp(status=404)
 
-        self.assertEqual(self._run(_NotFound()), (0, 0))
+        self.assertEqual(self._run(_NotFound()), (0, 0, 0))
 
     def test_counts_failed_asset_downloads(self):
         release = {"assets": [{"name": "bg.png", "browser_download_url": "http://x/bg.png"}]}
         # Asset returns a non-image body, so the download is rejected.
         session = _Session(release, asset_body=b"not an image" * 100)
-        got, total = self._run(session)
+        got, skipped, total = self._run(session)
 
-        self.assertEqual((got, total), (0, 1))
+        self.assertEqual((got, skipped, total), (0, 0, 1))
+
+    def test_skips_textures_already_on_disk(self):
+        textures = os.path.join(self.tmp.name, "textures")
+        os.makedirs(textures, exist_ok=True)
+        with open(os.path.join(textures, "bg.png"), "wb") as f:
+            f.write(PNG_BODY)
+        release = {"assets": [{"name": "bg.png", "browser_download_url": "http://x/bg.png"}]}
+        session = _Session(release)
+
+        got, skipped, total = self._run(session)
+
+        self.assertEqual((got, skipped, total), (0, 1, 1))
+        # Only the release listing was fetched — no asset download request.
+        self.assertEqual(session.requested, [main.TEXTURES_RELEASE_API])
+
+    def test_force_redownloads_existing_textures(self):
+        textures = os.path.join(self.tmp.name, "textures")
+        os.makedirs(textures, exist_ok=True)
+        with open(os.path.join(textures, "bg.png"), "wb") as f:
+            f.write(b"stale")
+        release = {"assets": [{"name": "bg.png", "browser_download_url": "http://x/bg.png"}]}
+        self.cfg.force = True
+
+        got, skipped, total = self._run(_Session(release))
+
+        self.assertEqual((got, skipped, total), (1, 0, 1))
+        with open(os.path.join(textures, "bg.png"), "rb") as f:
+            self.assertEqual(f.read(), PNG_BODY)
 
 
 class ResolveWantTexturesTests(unittest.TestCase):

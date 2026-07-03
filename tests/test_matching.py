@@ -127,7 +127,7 @@ class DownloadCardTests(unittest.TestCase):
 
         async def fake_try_download(session, url, filepath, timeout, max_retries):
             attempted_urls.append(url)
-            return True
+            return main.FetchResult.OK
 
         with mock.patch.object(
             main,
@@ -157,7 +157,9 @@ class DownloadCardTests(unittest.TestCase):
 
         async def fake_try_download(session, url, filepath, timeout, max_retries):
             attempted_urls.append(url)
-            return url.startswith(self.cfg.sources["backup"])
+            if url.startswith(self.cfg.sources["backup"]):
+                return main.FetchResult.OK
+            return main.FetchResult.MISSING
 
         with mock.patch.object(
             main,
@@ -193,7 +195,9 @@ class DownloadCardTests(unittest.TestCase):
 
         async def fake_try_download(session, url, filepath, timeout, max_retries):
             attempted_urls.append(url)
-            return url.endswith("/46986414.jpg")
+            if url.endswith("/46986414.jpg"):
+                return main.FetchResult.OK
+            return main.FetchResult.MISSING
 
         with mock.patch.object(
             main,
@@ -229,7 +233,9 @@ class DownloadCardTests(unittest.TestCase):
 
         async def fake_try_download(session, url, filepath, timeout, max_retries):
             attempted_urls.append(url)
-            return url.endswith("/46986414.jpg")
+            if url.endswith("/46986414.jpg"):
+                return main.FetchResult.OK
+            return main.FetchResult.MISSING
 
         with mock.patch.object(
             main,
@@ -265,7 +271,7 @@ class DownloadCardTests(unittest.TestCase):
 
         async def fake_try_download(session, url, filepath, timeout, max_retries):
             attempted_urls.append(url)
-            return True
+            return main.FetchResult.OK
 
         with mock.patch.object(
             main,
@@ -295,7 +301,7 @@ class DownloadCardTests(unittest.TestCase):
 
         async def fake_try_download(session, url, filepath, timeout, max_retries):
             attempted_urls.append(url)
-            return True
+            return main.FetchResult.OK
 
         with mock.patch.object(
             main,
