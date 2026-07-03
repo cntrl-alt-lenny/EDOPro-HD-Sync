@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 246" width="760" height="246" role="img" aria-label="What's new in EDOPro HD Sync v4.9.0">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 345" width="760" height="345" role="img" aria-label="What's new in EDOPro HD Sync v4.10.0">
   <style>
     text { font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
     .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 2.5px; fill: #7f89a6; }
@@ -41,30 +41,42 @@
     </radialGradient>
   </defs>
 
-  <rect x="1" y="1" width="758" height="244" rx="16" fill="url(#bg)" stroke="#2a3554"/>
-  <rect x="1" y="1" width="758" height="244" rx="16" fill="url(#glow)"/>
+  <rect x="1" y="1" width="758" height="343" rx="16" fill="url(#bg)" stroke="#2a3554"/>
+  <rect x="1" y="1" width="758" height="343" rx="16" fill="url(#glow)"/>
 
   <text x="30" y="36" class="eyebrow">EDOPRO HD SYNC · LATEST RELEASE</text>
-  <text x="30" y="68" class="title">What’s New in <tspan class="title-version">v4.9.0</tspan></text>
+  <text x="30" y="68" class="title">What’s New in <tspan class="title-version">v4.10.0</tspan></text>
   <rect x="30" y="82" width="122" height="3" rx="1.5" fill="url(#gold)"/>
 
-  <path class="spark" d="M 620 23 l 3.2 7.8 7.8 3.2 -7.8 3.2 -3.2 7.8 -3.2 -7.8 -7.8 -3.2 7.8 -3.2 Z" fill="url(#gold)"/>
-  <path class="spark spark2" d="M 592 37 l 2.1 5 5 2 -5 2 -2.1 5 -2.1 -5 -5 -2 5 -2 Z" fill="url(#gold)"/>
+  <path class="spark" d="M 611 23 l 3.2 7.8 7.8 3.2 -7.8 3.2 -3.2 7.8 -3.2 -7.8 -7.8 -3.2 7.8 -3.2 Z" fill="url(#gold)"/>
+  <path class="spark spark2" d="M 583 37 l 2.1 5 5 2 -5 2 -2.1 5 -2.1 -5 -5 -2 5 -2 Z" fill="url(#gold)"/>
 
-  <rect x="654" y="24" width="78" height="27" rx="13.5" fill="none" stroke="url(#gold)"/>
-  <text x="693.0" y="42.5" class="pill-text" text-anchor="middle">v4.9.0</text>
-  <text x="732" y="68" class="date" text-anchor="end">Released June 3, 2026</text>
+  <rect x="645" y="24" width="87" height="27" rx="13.5" fill="none" stroke="url(#gold)"/>
+  <text x="688.5" y="42.5" class="pill-text" text-anchor="middle">v4.10.0</text>
+  <text x="732" y="68" class="date" text-anchor="end">Released July 3, 2026</text>
 
   <g class="item" style="animation-delay:150ms">
     <rect x="30" y="111" width="9" height="9" rx="2" transform="rotate(45 34.5 115.5)" fill="url(#gold)"/>
-    <text x="52" y="121" class="bullet">Add single-file Windows &amp; Linux launchers</text>
+    <text x="52" y="121" class="bullet">Enable Dependabot dependency alerts</text>
   </g>
   <g class="item" style="animation-delay:270ms">
     <rect x="30" y="144" width="9" height="9" rx="2" transform="rotate(45 34.5 148.5)" fill="url(#gold)"/>
-    <text x="52" y="154" class="bullet">Support multiple curated texture packs</text>
+    <text x="52" y="154" class="bullet">Add a self-updating What's New panel to the README</text>
+  </g>
+  <g class="item" style="animation-delay:390ms">
+    <rect x="30" y="177" width="9" height="9" rx="2" transform="rotate(45 34.5 181.5)" fill="url(#gold)"/>
+    <text x="52" y="187" class="bullet">Launchers now auto-update the app on new releases</text>
+  </g>
+  <g class="item" style="animation-delay:510ms">
+    <rect x="30" y="210" width="9" height="9" rx="2" transform="rotate(45 34.5 214.5)" fill="url(#gold)"/>
+    <text x="52" y="220" class="bullet">Validate config suffixes and remove dead code</text>
+  </g>
+  <g class="item" style="animation-delay:630ms">
+    <rect x="30" y="243" width="9" height="9" rx="2" transform="rotate(45 34.5 247.5)" fill="url(#gold)"/>
+    <text x="52" y="253" class="bullet">Fix download caching, dry-run totals, and texture re-downloads</text>
   </g>
 
-  <line x1="30" y1="204" x2="730" y2="204" stroke="#232d4a"/>
-  <text x="30" y="220" class="foot">This panel updates automatically with every release</text>
-  <text x="732" y="220" class="foot" text-anchor="end">See all releases →</text>
+  <line x1="30" y1="303" x2="730" y2="303" stroke="#232d4a"/>
+  <text x="30" y="319" class="foot">This panel updates automatically with every release</text>
+  <text x="732" y="319" class="foot" text-anchor="end">See all releases →</text>
 </svg>
