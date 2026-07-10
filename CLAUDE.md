@@ -78,6 +78,13 @@ Cards that fail to download are remembered for 14 days so repeat runs skip them 
 ### SSL certificates
 PyInstaller bundles do not include system SSL certs automatically. The app uses `certifi` and passes it to `aiohttp.TCPConnector` via `ssl.create_default_context(cafile=certifi.where())`. The build uses `--collect-data certifi` to include the cert bundle. **Do not remove this - it will silently break all downloads.**
 
+The shared HTTP session also passes `trust_env=True` so managed environments
+can use `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`. If a private proxy or
+certificate authority is required, `EDOPRO_CA_BUNDLE` (or the standard
+`SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` variables) is loaded in addition to the
+bundled certifi roots. Never disable TLS verification or replace the bundled
+roots with a private-only bundle.
+
 ## Release process
 Push a version tag -> GitHub Actions builds 3 binaries -> attached to a GitHub Release automatically.
 
