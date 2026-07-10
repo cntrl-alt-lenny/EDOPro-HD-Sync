@@ -98,6 +98,19 @@ Scans all `.cdb` card databases in your EDOPro folder and tries each card's ID d
 - `python main.py --textures-pack NAME` picks a specific texture pack when more than one is available
 - `python main.py --edopro-path "/path/to/ProjectIgnis"` points the tool at a specific folder
 
+### Managed or proxied environments
+
+The downloader honors the standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
+environment variables. It keeps certificate verification enabled using the
+bundled `certifi` roots by default. If your network uses a private certificate
+authority, point `EDOPRO_CA_BUNDLE` at its PEM bundle; it will be added to the
+bundled roots before running the sync:
+
+```bash
+export EDOPRO_CA_BUNDLE="/path/to/company-or-managed-ca.pem"
+python main.py --edopro-path "/path/to/ProjectIgnis"
+```
+
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request.

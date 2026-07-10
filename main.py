@@ -137,6 +137,35 @@ TEXTURES_RELEASES_API = "https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-
 TEXTURES_RELEASE_API = f"{TEXTURES_RELEASES_API}/tags/textures"
 
 
+def _custom_ca_bundle_path() -> str | None:
+    """Return an existing custom CA bundle path, if one is configured."""
+    for env_name in ("EDOPRO_CA_BUNDLE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"):
+        configured_path = os.environ.get(env_name)
+        if not configured_path:
+            continue
+        expanded_path = os.path.abspath(os.path.expanduser(configured_path))
+        if os.path.isfile(expanded_path):
+            return expanded_path
+    return None
+
+
+def _create_http_session(
+    *, limit: int | None = None, limit_per_host: int | None = None
+) -> aiohttp.ClientSession:
+    """Create an HTTPS session that honors standard proxy and CA-bundle settings."""
+    ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+    custom_ca_bundle = _custom_ca_bundle_path()
+    if custom_ca_bundle:
+        ssl_ctx.load_verify_locations(cafile=custom_ca_bundle)
+    connector_kwargs: dict[str, object] = {"ssl": ssl_ctx}
+    if limit is not None:
+        connector_kwargs["limit"] = limit
+    if limit_per_host is not None:
+        connector_kwargs["limit_per_host"] = limit_per_host
+    connector = aiohttp.TCPConnector(**connector_kwargs)
+    return aiohttp.ClientSession(connector=connector, trust_env=True)
+
+
 def _parse_version(text: str) -> tuple[int, ...]:
     """Parse a dotted version string into a comparable tuple. Unknowns become (0,)."""
     cleaned = text.strip().lstrip("v").split("-", 1)[0]
@@ -166,9 +195,7 @@ async def notify_if_update_available() -> None:
     the user about a new release. Silent on any failure.
     """
     try:
-        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-        connector = aiohttp.TCPConnector(ssl=ssl_ctx)
-        async with aiohttp.ClientSession(connector=connector) as session:
+        async with _create_http_session() as session:
             latest = await check_for_update(session, VERSION)
     except Exception:
         return
@@ -1799,14 +1826,10 @@ async def run(cfg: Config):
     for card_id in missing_ids:
         queue.put_nowait(card_id)
 
-    ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-    connector = aiohttp.TCPConnector(
+    async with _create_http_session(
         limit=cfg.concurrency,
         limit_per_host=min(cfg.concurrency, 25),
-        ssl=ssl_ctx,
-    )
-
-    async with aiohttp.ClientSession(connector=connector) as session:
+    ) as session:
         if not cfg.dry_run:
             # Run the connectivity test and update check at the same time so a
             # slow connection doesn't add both timeouts back-to-back before the
