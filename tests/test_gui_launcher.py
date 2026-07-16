@@ -87,25 +87,26 @@ class ApplyGuiChoicesTests(unittest.TestCase):
         self.assertTrue(cfg.stats)
 
 
-class MaybeShowGuiTests(unittest.TestCase):
-    def test_user_closing_the_window_exits_quietly(self):
-        cfg = _cfg(gui=True)
-        with mock.patch.object(gui, "show_options_dialog", return_value=None):
-            self.assertFalse(main._maybe_show_gui(cfg))
+class RunAppFallbackTests(unittest.TestCase):
+    def test_run_app_raises_gui_unavailable_without_tkinter(self):
+        with mock.patch.object(gui, "tk", None), self.assertRaises(gui.GuiUnavailable):
+            gui.run_app(_cfg(), "1.0.0", None, None)
 
-    def test_gui_failure_falls_back_to_console_flow(self):
-        cfg = _cfg(gui=True)
-        with mock.patch.object(gui, "show_options_dialog", side_effect=RuntimeError("no display")):
-            self.assertTrue(main._maybe_show_gui(cfg))
-        self.assertTrue(cfg.interactive_prompts)
+    def test_gui_progress_adapter_posts_rich_compatible_events(self):
+        import queue as queue_mod
 
-    def test_start_applies_choices(self):
-        cfg = _cfg(gui=True)
-        choices = {"field_art": True, "my_decks": True, "stats": False}
-        with mock.patch.object(gui, "show_options_dialog", return_value=choices):
-            self.assertTrue(main._maybe_show_gui(cfg))
-        self.assertTrue(cfg.my_decks)
-        self.assertFalse(cfg.interactive_prompts)
+        events: queue_mod.Queue = queue_mod.Queue()
+        progress = gui._GuiProgress(events)
+
+        task = progress.add_task("Syncing card artwork", total=42)
+        progress.update(task, description="Syncing Dark Magician")
+        progress.update(task)  # description=None must be a no-op, not a crash
+        progress.advance(task)
+
+        self.assertEqual(events.get_nowait(), ("task", task, "Syncing card artwork", 42))
+        self.assertEqual(events.get_nowait(), ("desc", task, "Syncing Dark Magician"))
+        self.assertEqual(events.get_nowait(), ("adv", task, 1))
+        self.assertTrue(events.empty())
 
 
 class DeckHelpersTests(unittest.TestCase):
