@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 640" width="520" height="640" role="img" aria-label="EDOPro HD Sync options window preview">
+  <style>
+    text { font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
+    .title { font-size: 19px; font-weight: 700; fill: #f3f6ff; }
+    .chip { font-size: 11px; font-weight: 700; fill: #ffd76a; }
+    .sub { font-size: 12px; fill: #8fa0bf; }
+    .section { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; fill: #c9a24a; }
+    .box { font-size: 12.5px; fill: #d7deee; }
+    .hint { font-size: 10.5px; fill: #8fa0bf; }
+    .btn-primary { font-size: 12px; font-weight: 700; fill: #161006; }
+    .btn-secondary { font-size: 12px; fill: #d7deee; }
+  </style>
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd76a"/>
+      <stop offset="1" stop-color="#f0a832"/>
+    </linearGradient>
+    <filter id="shadow" x="-8%" y="-6%" width="116%" height="114%">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- window -->
+  <rect x="22" y="18" width="476" height="600" rx="12" fill="#0d1425" stroke="#263351" filter="url(#shadow)"/>
+
+  <!-- title bar -->
+  <rect x="22" y="18" width="476" height="34" rx="12" fill="#0a101f"/>
+  <rect x="22" y="40" width="476" height="12" fill="#0a101f"/>
+  <circle cx="44" cy="35" r="5.5" fill="#f66358"/>
+  <circle cx="62" cy="35" r="5.5" fill="#fbbe3c"/>
+  <circle cx="80" cy="35" r="5.5" fill="#44c247"/>
+  <text x="260" y="39" text-anchor="middle" class="sub">EDOPro HD Sync</text>
+
+  <!-- header -->
+  <text x="46" y="86" class="title">EDOPro HD Sync</text>
+  <rect x="408" y="70" width="66" height="21" rx="10.5" fill="#1b2740"/>
+  <text x="441" y="84.5" text-anchor="middle" class="chip">v5.0.0</text>
+  <text x="46" y="108" class="sub">Tick what you want, then press Start.</text>
+
+  <!-- ARTWORK group -->
+  <text x="46" y="138" class="section">ARTWORK</text>
+  <rect x="46" y="148" width="428" height="106" rx="8" fill="#131c31" stroke="#263351"/>
+  <rect x="60" y="162" width="14" height="14" rx="3.5" fill="url(#gold)"/>
+  <path d="M 63 169 l 3 3.4 5.4 -6.4" stroke="#161006" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="84" y="174" class="box">Field Spell playmat artwork</text>
+  <text x="84" y="191" class="hint">Also fetch the art shown on the board during duels</text>
+  <rect x="60" y="210" width="14" height="14" rx="3.5" fill="#0d1425" stroke="#263351"/>
+  <text x="84" y="222" class="box">Only cards from my decks</text>
+  <text x="84" y="239" class="hint">Much faster — just the cards you actually play</text>
+
+  <!-- EXTRAS group -->
+  <text x="46" y="284" class="section">EXTRAS</text>
+  <rect x="46" y="294" width="428" height="106" rx="8" fill="#131c31" stroke="#263351"/>
+  <rect x="60" y="308" width="14" height="14" rx="3.5" fill="#0d1425" stroke="#263351"/>
+  <text x="84" y="320" class="box">Curated textures</text>
+  <text x="84" y="337" class="hint">Custom backgrounds and card sleeves</text>
+  <rect x="60" y="356" width="14" height="14" rx="3.5" fill="#0d1425" stroke="#263351"/>
+  <text x="84" y="368" class="box">Save a sync report</text>
+  <text x="84" y="385" class="hint">Writes a text file listing anything unavailable</text>
+
+  <!-- MAINTENANCE group -->
+  <text x="46" y="430" class="section">MAINTENANCE</text>
+  <rect x="46" y="440" width="428" height="106" rx="8" fill="#131c31" stroke="#263351"/>
+  <rect x="60" y="454" width="14" height="14" rx="3.5" fill="#0d1425" stroke="#263351"/>
+  <text x="84" y="466" class="box">Repair broken images first</text>
+  <text x="84" y="483" class="hint">Finds and re-downloads corrupt files</text>
+  <rect x="60" y="502" width="14" height="14" rx="3.5" fill="#0d1425" stroke="#263351"/>
+  <text x="84" y="514" class="box">Re-download everything</text>
+  <text x="84" y="531" class="hint">Full refresh instead of only missing artwork</text>
+
+  <!-- buttons -->
+  <rect x="268" y="568" width="118" height="32" rx="6" fill="none" stroke="#263351"/>
+  <text x="327" y="588.5" text-anchor="middle" class="btn-secondary">Show coverage</text>
+  <rect x="398" y="568" width="76" height="32" rx="6" fill="url(#gold)"/>
+  <text x="436" y="588.5" text-anchor="middle" class="btn-primary">Start</text>
+</svg>

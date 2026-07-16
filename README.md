@@ -4,6 +4,8 @@
 
 <h1 align="center">EDOPro HD Sync</h1>
 
+<p align="center"><b>Every card in HD. One double-click.</b></p>
+
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/github/license/cntrl-alt-lenny/EDOPro-HD-Sync" alt="License">
@@ -14,95 +16,98 @@
 
 <p align="center">
   A fast, automatic HD artwork downloader for <a href="https://github.com/edo9300/edopro">EDOPro</a>.
-  It scans your card databases, finds missing images, and downloads the best available artwork,
-  including GOAT, Pre-Errata, and alternate art variants.
+  It scans your card databases, finds every missing image, and fetches the best available artwork —
+  official, Rush Duel, anime/custom, GOAT, Pre-Errata, and alternate arts included.
 </p>
 
 <p align="center">
-  <a href="https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest">
-    <img src="assets/whats-new.svg" alt="What's new in the latest release" width="760">
-  </a>
+  <img src="assets/app-window.svg" alt="EDOPro HD Sync options window" width="520">
 </p>
 
-<p align="center">
-  <a href="https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases">
-    <img src="assets/release-history.svg" alt="Release history: what each release added" width="760">
-  </a>
-</p>
+## Download
 
-## Why It Feels Better
+Grab **one file** for your platform — no install, no Python, no setup.
 
-- **Tick-box launcher** - the packaged app opens a small options window on Windows, macOS, and Linux: pick field art, only-my-decks, textures, repair, or a full refresh, then press Start
-- **Every card type covered** - official, Rush Duel, and anime/custom cards are all fetched directly by ID
-- **Field Spell playmat art** - downloads the cropped artwork EDOPro displays on the board into `pics/field/`
-- **Self-updating launchers** - one double-clickable file per platform that installs new versions automatically
-- **Offline health check** - quickly verifies suffix-stripping logic
-- **Simple packaged releases** - ready-to-use downloads for Windows, macOS, and Linux
-- **Curated textures** - optionally fetch a hand-picked set of backgrounds and card sleeves
+| Platform | Get this file | Then |
+|---|---|---|
+| **Windows** | [`EDOPro-HD-Sync.bat`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Double-click it. If SmartScreen warns, choose **More info → Run anyway**. |
+| **macOS** | [`EDOPro-HD-Sync.command`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Double-click it (first time: **right-click → Open**), then pick your ProjectIgnis folder. |
+| **Linux** | [`EDOPro-HD-Sync.sh`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Run `./EDOPro-HD-Sync.sh`, then pick your ProjectIgnis folder. |
 
-## Quick Start
+Each launcher downloads the app (checksum-verified), remembers your EDOPro folder, and **keeps itself on the latest version automatically**. Full platform zip bundles with a `ReadMe.txt` are also on the [Releases page](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest).
 
-### Windows
+## Features
 
-1. Download the single `EDOPro-HD-Sync.bat` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
-2. Double-click it
-3. Pick your EDOPro folder when prompted — it remembers your choice
+- **Tick-box options window** — the packaged app opens a small window on Windows, macOS, and Linux: pick field art, only-my-decks, textures, repair, or a full refresh, then press Start.
+- **Every card type covered** — official, Rush Duel, and anime/custom cards are all fetched directly by the same IDs EDOPro uses.
+- **Field Spell playmat art** — the cropped artwork EDOPro displays on the board is downloaded into `pics/field/` automatically.
+- **Deck-first sync** — `--my-decks` (or its tick-box) only fetches cards used in your decks, so a fresh install is playable in minutes instead of hours.
+- **Coverage at a glance** — `--stats` shows artwork coverage and disk usage without downloading a thing.
+- **Repair mode** — `--repair` finds corrupt or half-downloaded images and re-fetches them.
+- **Curated textures** — optionally grab a hand-picked set of backgrounds and card sleeves.
+- **Self-updating launchers** — one double-clickable file per platform installs new versions on its own.
+- **Safe and resumable** — checksum-verified downloads, a 14-day failure cache so known-missing cards aren't hammered, and optional timestamped sync reports.
 
-It downloads the app and your HD artwork, then runs. If SmartScreen warns, click **More info → Run anyway**. The full `EDOPro-HD-Sync-Windows-vVERSION.zip` bundle (with a `ReadMe.txt`) is also available.
+## How it works
 
-### macOS
+1. **Scan** — reads every `.cdb` card database in your EDOPro folder (root, `expansions/`, and repository deltas).
+2. **Diff** — compares the card list against the images already in `pics/` and only queues what's missing.
+3. **Fetch** — 50 async workers try each card on [YGOProDeck](https://ygoprodeck.com), with a waterfall for tricky cases: manual overrides, GOAT / Pre-Errata suffix matching, an ID-offset fallback, and ProjectIgnis's own image server as the final backup (so even brand-new Rush Duel sets download).
+4. **Extras** — Field Spell playmat art lands in `pics/field/`, definitive misses are cached for 14 days, and a sync report can be saved when it's done.
 
-1. Download the single `EDOPro-HD-Sync.command` file from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
-2. Double-click it
-3. The first time, pick your ProjectIgnis folder (the dialog starts in Applications) — it remembers your choice
-4. If macOS asks the first time, **right-click the file and choose Open** (no System Settings trip needed)
+## CLI reference
 
-It downloads the app and your HD artwork, then runs. The full `EDOPro-HD-Sync-macOS-vVERSION.zip` bundle (with a Mac `ReadMe.txt`) is also available if you prefer it.
+The packaged app needs no flags — the options window covers the common choices. Power users get the full set:
 
-### Linux
+<details>
+<summary><b>All flags</b></summary>
 
-1. Download the single `EDOPro-HD-Sync.sh` from [Releases](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest)
-2. Run `./EDOPro-HD-Sync.sh` (or double-click and choose "Run")
-3. Pick your ProjectIgnis folder when prompted — it remembers your choice
+| Flag | What it does |
+|---|---|
+| `--force` / `--no-force` | Re-download **all** images for a full refresh (default: only missing). |
+| `--dry-run` | Preview what would be downloaded without downloading. |
+| `--my-decks` | Only sync cards used in your EDOPro deck folder (much faster). |
+| `--deck PATH` | Only sync cards in one `.ydk` file (repeat to combine decks). |
+| `--decks-folder PATH` | Only sync cards in every `.ydk` inside a folder. |
+| `--stats` | Show artwork coverage and disk usage, then exit. |
+| `--repair` | Re-download images that are missing, corrupt, or not valid JPEGs. |
+| `--field-art` / `--no-field-art` | Field Spell playmat art into `pics/field/` (default: on). |
+| `--textures` / `--no-textures` | Also download the curated texture pack into `textures/`. |
+| `--textures-pack NAME` | Pick a specific texture pack. |
+| `--gui` / `--no-gui` | Force or skip the tick-box options window. |
+| `--recheck-missing` | Retry cards in the failure cache (useful after new sets hit YGOProDeck). |
+| `--prune` | After the sync, delete images whose IDs are no longer in any database. |
+| `--edopro-path PATH` | Point at a specific EDOPro/ProjectIgnis folder. |
+| `--save-report` / `--no-save-report` | Write a timestamped `.txt` sync report. |
+| `--quiet` | Minimal output — just the progress bar and summary. |
+| `--concurrency N` | Max simultaneous downloads (default: 50). |
+| `--max-retries N` | Retry failed downloads N times (default: 3). |
+| `--timeout N` | HTTP timeout in seconds (default: 30). |
+| `--config PATH` | Use a custom config file. |
+| `--generate-config` | Write a default `config.json` and exit. |
+| `--health-check` | Run quick offline sanity checks and exit. |
+| `--no-pause` | Windows packaged builds: close immediately instead of waiting for Enter. |
 
-It downloads the app and your HD artwork, then runs (the folder picker needs `zenity` or `kdialog`). The full `EDOPro-HD-Sync-Linux-vVERSION.zip` bundle (with a `ReadMe.txt`) is also available.
+</details>
 
-### From Source
+## From source
 
 ```bash
+git clone https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync.git
+cd EDOPro-HD-Sync
 pip install -r requirements.txt
-python main.py --force
-python main.py --health-check
+
+python main.py                 # normal sync
+python main.py --my-decks      # deck-first sync
+python main.py --health-check  # quick offline sanity check
 ```
-
-## How It Works
-
-Scans all `.cdb` card databases in your EDOPro folder and tries each card's ID directly on [YGOProDeck](https://ygoprodeck.com) — official, Rush Duel, and anime/custom cards are all hosted there under the same IDs EDOPro uses.
-
-- **Field Spells** - the playmat (cropped) artwork is fetched into `pics/field/` automatically
-- **Alternate artworks** - each art ID is tried individually
-- **GOAT format cards** - matched to their official artwork by stripping the GOAT suffix
-- **Pre-Errata cards** - resolved via suffix stripping, with a small ID-offset fallback for legacy edge cases
-- **Manual overrides** - optional `manual_map.json` for edge cases
-
-## Helpful Commands
-
-- `python main.py --health-check` runs an offline sanity check for suffix-stripping and Pre-Errata matching
-- `python main.py --stats` shows artwork coverage and disk usage without downloading anything
-- `python main.py --my-decks` only syncs cards used in your EDOPro deck folder (much faster)
-- `python main.py --gui` opens the tick-box options window (the packaged app does this automatically; `--no-gui` skips it)
-- `python main.py --dry-run` previews what would be downloaded
-- `python main.py --repair` re-downloads any images in `pics/` (and `pics/field/`) that are corrupt or incomplete
-- `python main.py --no-field-art` skips the Field Spell playmat artwork
-- `python main.py --textures` also downloads the curated texture pack (custom backgrounds and card sleeves) into `textures/` (the packaged app asks about this too)
-- `python main.py --textures-pack NAME` picks a specific texture pack when more than one is available
-- `python main.py --edopro-path "/path/to/ProjectIgnis"` points the tool at a specific folder
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+Contributions are welcome — open an issue or send a pull request. Please run `python main.py --health-check` and the test suite before submitting.
 
 ## Credits
 
 - Original concept: [EDOPro-Hd-Downloader](https://github.com/NiiMiyo/EDOPro-Hd-Downloader) by NiiMiyo
+- Card artwork hosted by [YGOProDeck](https://ygoprodeck.com) and [ProjectIgnis](https://github.com/ProjectIgnis)
 - Licensed under the [MIT License](LICENSE)

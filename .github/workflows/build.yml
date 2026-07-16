@@ -215,6 +215,7 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       with:
         name: EDOPro HD Sync v${{ steps.release_version.outputs.value }}
+        generate_release_notes: true
         fail_on_unmatched_files: true
         files: |
           ${{ steps.release_file.outputs.path }}
