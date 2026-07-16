@@ -25,7 +25,7 @@ The "EDOPro-HD-Sync-macOS-vVERSION.zip" still works: unzip it, open the
 
 Helpful notes
 -------------
-- A small options window opens first: tick what you want (field art, only your decks, textures, repair) and press Start.
+- The app opens a small window: tick what you want (field art, only your decks, textures, repair), press Start, and watch the progress right in the window.
 - The one-file launcher keeps the app up to date automatically: when a new version is released, it downloads it on the next run.
 - It downloads only missing artwork by default (fast). If everything is already there it offers to re-download all; or run with --force.
 - The launcher and its settings live in:

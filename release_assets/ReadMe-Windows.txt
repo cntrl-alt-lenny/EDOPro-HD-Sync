@@ -18,7 +18,7 @@ folder, run EDOPro-HD-Sync.exe, and pick your EDOPro folder when asked.
 
 Helpful notes
 -------------
-- A small options window opens first: tick what you want (field art, only your decks, textures, repair) and press Start.
+- The app opens a small window: tick what you want (field art, only your decks, textures, repair), press Start, and watch the progress right in the window.
 - The one-file launcher keeps the app up to date automatically: when a new version is released, it downloads it on the next run.
 - It downloads only missing artwork by default (fast). To re-download everything, answer "y" when it offers a full refresh, or run with --force.
 - The tool remembers your chosen EDOPro folder in config.json beside the exe.
