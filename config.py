@@ -40,12 +40,16 @@ DEFAULTS = {
     "save_report": False,
     "field_art": True,
     # YGOProDeck hosts official, Rush Duel, and anime/custom cards under the
-    # same IDs EDOPro uses. "field" serves the cropped art used on the playmat.
-    # A "backup" entry is still honored if a user configures one, but the old
-    # default (ProjectIgnis/Images on GitHub) was deleted upstream and is gone.
+    # same IDs EDOPro uses; it's a big CDN, so it takes the bulk of the load.
+    # "backup"/"field_backup" is ProjectIgnis's own image server — the same one
+    # EDOPro itself downloads from (recovered from nixpkgs' from-source build;
+    # note the :2096 port). It's a small community box: only hit it when
+    # YGOProDeck doesn't have the art (newest Rush sets, some anime cards).
     "sources": {
         "official": "https://images.ygoprodeck.com/images/cards",
         "field": "https://images.ygoprodeck.com/images/cards_cropped",
+        "backup": "https://pics.projectignis.org:2096/pics",
+        "field_backup": "https://pics.projectignis.org:2096/pics/field",
     },
     "suffixes_to_strip": [
         " GOAT",
@@ -414,6 +418,12 @@ class Config:
         self.gui: bool | None = self.cli.gui
         # Console questions are skipped when the options window already ran.
         self.interactive_prompts: bool = True
+        # Runtime hooks installed by the options window (never set via CLI/file):
+        self.gui_progress = None  # Rich-Progress-compatible adapter for the window
+        self.folder_picker = None  # callable(initial_dir) -> chosen path or None
+        self.coverage_sink = None  # callable(dict) renders coverage in the window
+        self.notice_sink = None  # callable(str) for update nags & stage messages
+        self.cancel_event = None  # threading.Event; workers stop when it's set
         self.prune: bool = self.cli.prune
         self.repair: bool = self.cli.repair
 

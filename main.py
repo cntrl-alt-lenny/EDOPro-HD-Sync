@@ -154,11 +154,12 @@ def _update_message(latest: str) -> str:
     return (
         f"[yellow]A newer version ({latest}) is available — "
         "https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest\n"
-        "The one-file launcher installs updates automatically the next time you run it.[/yellow]"
+        "If you use the one-file launcher, it updates automatically on its next run; "
+        "otherwise grab the new version from the releases page.[/yellow]"
     )
 
 
-async def notify_if_update_available() -> None:
+async def notify_if_update_available(cfg: Config | None = None) -> None:
     """One-shot startup update check for paths that never open the main session.
 
     The normal sync path checks inside its own HTTP session; this covers the
@@ -174,6 +175,8 @@ async def notify_if_update_available() -> None:
         return
     if latest:
         console.print(_update_message(latest))
+        if cfg is not None and cfg.notice_sink is not None:
+            cfg.notice_sink(f"A newer version ({latest}) is available")
 
 
 async def check_for_update(session: aiohttp.ClientSession, current: str) -> str | None:
@@ -368,7 +371,14 @@ def prompt_for_edopro_path(cfg: Config) -> list[str] | None:
     warned_about_fallback = False
     while True:
         candidate: str | None
-        if sys.platform == "win32":
+        if cfg.folder_picker is not None:
+            # The options window is driving — ask it to show a folder dialog.
+            picked = cfg.folder_picker(cfg.edopro_path)
+            if not picked:
+                console.print("[yellow]No folder selected. Exiting.[/yellow]")
+                return None
+            candidate = normalize_edopro_path(picked)
+        elif sys.platform == "win32":
             candidate, used_dialog = browse_for_edopro_path(cfg.edopro_path)
             if used_dialog:
                 if not candidate:
@@ -1054,15 +1064,33 @@ async def download_field_art(
     progress=None,
     task_id=None,
 ) -> None:
-    """Download the playmat (cropped) artwork for one Field Spell."""
-    filepath = os.path.join(field_art_dir(cfg), f"{card_id}.jpg")
-    url = f"{cfg.sources['field']}/{card_id}.jpg"
+    """Download the playmat artwork for one Field Spell.
+
+    YGOProDeck's cropped art (.jpg) first; ProjectIgnis's own field art (.png)
+    as the backup. EDOPro reads either extension from pics/field/.
+    """
     timeout = aiohttp.ClientTimeout(total=cfg.timeout)
+    saw_transient = False
+
+    url = f"{cfg.sources['field']}/{card_id}.jpg"
+    filepath = os.path.join(field_art_dir(cfg), f"{card_id}.jpg")
     result = await _try_download(session, url, filepath, timeout, cfg.max_retries)
+    if result is FetchResult.ERROR:
+        saw_transient = True
+
+    if result is not FetchResult.OK and "field_backup" in cfg.sources:
+        url = f"{cfg.sources['field_backup']}/{card_id}.png"
+        filepath = os.path.join(field_art_dir(cfg), f"{card_id}.png")
+        result = await _try_download(
+            session, url, filepath, timeout, cfg.max_retries, is_valid=_looks_like_image
+        )
+        if result is FetchResult.ERROR:
+            saw_transient = True
+
     if result is FetchResult.OK:
         stats.field_ok += 1
     else:
-        stats.record_field_failure(card_id, name, transient=result is FetchResult.ERROR)
+        stats.record_field_failure(card_id, name, transient=saw_transient)
     if progress and task_id is not None:
         progress.advance(task_id)
 
@@ -1121,7 +1149,10 @@ async def download_curated_textures(
     downloaded = 0
     skipped = 0
     force = getattr(cfg, "force", False)
+    cancel_event = getattr(cfg, "cancel_event", None)
     for asset in assets:
+        if cancel_event is not None and cancel_event.is_set():
+            break
         name = os.path.basename(asset["name"])  # guard against odd asset names
         dest = os.path.join(textures_dir, name)
         if not force and os.path.exists(dest):
@@ -1473,7 +1504,7 @@ def _should_show_gui(cfg: Config) -> bool:
 
 
 def _apply_gui_choices(cfg: Config, choices: dict) -> None:
-    """Copy the dialog's tick-boxes onto the config and mute console questions."""
+    """Copy the window's tick-boxes onto the config and mute console questions."""
     cfg.field_art = bool(choices.get("field_art", cfg.field_art))
     cfg.my_decks = bool(choices.get("my_decks", False))
     cfg.textures = bool(choices.get("textures", False))
@@ -1483,26 +1514,6 @@ def _apply_gui_choices(cfg: Config, choices: dict) -> None:
     cfg.stats = bool(choices.get("stats", False))
     # The window already answered everything a console prompt would ask.
     cfg.interactive_prompts = False
-
-
-def _maybe_show_gui(cfg: Config) -> bool:
-    """Show the options window when appropriate. Returns False when the user quit."""
-    if not _should_show_gui(cfg):
-        return True
-    try:
-        if not gui.gui_available():
-            return True
-        choices = gui.show_options_dialog(
-            VERSION,
-            {"field_art": cfg.field_art, "save_report": cfg.save_report},
-        )
-    except Exception:
-        # No display / broken Tk — the console flow works everywhere.
-        return True
-    if choices is None:
-        return False
-    _apply_gui_choices(cfg, choices)
-    return True
 
 
 def _count_card_images(pics_path: str) -> int:
@@ -1559,37 +1570,52 @@ def _scan_art_folder(folder: str, extensions: tuple[str, ...]) -> tuple[set[int]
     return ids, size
 
 
-def print_coverage_stats(cfg: Config, id_to_name: dict[int, str], field_ids: set[int]) -> None:
-    """Print how much artwork is on disk versus what the databases know about."""
+def collect_coverage_stats(cfg: Config, id_to_name: dict[int, str], field_ids: set[int]) -> dict:
+    """Gather how much artwork is on disk versus what the databases know about."""
     card_files, card_bytes = _scan_art_folder(cfg.pics_path, ("jpg",))
     field_files, field_bytes = _scan_art_folder(field_art_dir(cfg), ("jpg", "png"))
-
-    total = len(id_to_name)
-    have = sum(1 for cid in id_to_name if cid in card_files)
-    fields_total = len(field_ids & id_to_name.keys())
-    fields_have = sum(1 for cid in field_ids if cid in id_to_name and cid in field_files)
     cached = len(load_failure_cache(_failure_cache_path(cfg)))
     field_cached = len(load_failure_cache(_field_failure_cache_path(cfg)))
+    return {
+        "cards_total": len(id_to_name),
+        "cards_have": sum(1 for cid in id_to_name if cid in card_files),
+        "fields_total": len(field_ids & id_to_name.keys()),
+        "fields_have": sum(1 for cid in field_ids if cid in id_to_name and cid in field_files),
+        "disk_bytes": card_bytes + field_bytes,
+        "known_missing": cached + field_cached,
+        "pics_path": os.path.abspath(cfg.pics_path),
+    }
+
+
+def print_coverage_stats(cfg: Config, id_to_name: dict[int, str], field_ids: set[int]) -> None:
+    """Print (or hand to the options window) the artwork coverage summary."""
+    data = collect_coverage_stats(cfg, id_to_name, field_ids)
+    if cfg.coverage_sink is not None:
+        cfg.coverage_sink(data)
+        return
 
     def pct(part: int, whole: int) -> str:
         return f"{100 * part / whole:.1f}%" if whole else "n/a"
 
     console.print()
     console.rule("[bold]Artwork Coverage[/bold]")
-    console.print(f"  Cards indexed   {total:>10,}")
-    console.print(f"  Card art        {have:>10,}  [dim]({pct(have, total)})[/dim]")
+    console.print(f"  Cards indexed   {data['cards_total']:>10,}")
     console.print(
-        f"  Field art       {fields_have:>10,}  [dim]of {fields_total:,} Field Spells "
-        f"({pct(fields_have, fields_total)})[/dim]"
+        f"  Card art        {data['cards_have']:>10,}  "
+        f"[dim]({pct(data['cards_have'], data['cards_total'])})[/dim]"
     )
-    console.print(f"  Disk usage      {_format_size(card_bytes + field_bytes):>10}")
-    if cached or field_cached:
+    console.print(
+        f"  Field art       {data['fields_have']:>10,}  [dim]of {data['fields_total']:,} "
+        f"Field Spells ({pct(data['fields_have'], data['fields_total'])})[/dim]"
+    )
+    console.print(f"  Disk usage      {_format_size(data['disk_bytes']):>10}")
+    if data["known_missing"]:
         console.print(
-            f"  Known missing   {cached + field_cached:>10,}  "
+            f"  Known missing   {data['known_missing']:>10,}  "
             f"[dim](re-check with --recheck-missing)[/dim]"
         )
     console.rule()
-    console.print(f"[dim]Images folder: {os.path.abspath(cfg.pics_path)}[/dim]")
+    console.print(f"[dim]Images folder: {data['pics_path']}[/dim]")
 
 
 async def run(cfg: Config):
@@ -1600,16 +1626,13 @@ async def run(cfg: Config):
     if cfg.health_check:
         if not run_health_check(cfg):
             raise SystemExit(1)
-        return
-
-    if not _maybe_show_gui(cfg):
-        return
+        return None
 
     dbs = get_db_files(cfg.edopro_path)
     if not dbs:
         dbs = prompt_for_edopro_path(cfg)
         if not dbs:
-            return
+            return None
 
     os.makedirs(cfg.pics_path, exist_ok=True)
 
@@ -1627,7 +1650,7 @@ async def run(cfg: Config):
 
     if cfg.stats:
         print_coverage_stats(cfg, full_id_to_name, field_ids)
-        return
+        return None
 
     # "Only my decks" (tick-box or --my-decks) points the deck filter at
     # EDOPro's own deck folder.
@@ -1662,6 +1685,22 @@ async def run(cfg: Config):
             cfg.decks_folder = deck_dir
 
     deck_filter = collect_deck_filter_ids(cfg)
+    if deck_filter is not None and not deck_filter:
+        if cfg.my_decks:
+            # The window/quick-start path: empty decks just mean "sync it all".
+            console.print(
+                "[yellow]No card IDs found in your decks — syncing everything instead.[/yellow]"
+            )
+            deck_filter = None
+        else:
+            # An explicit --deck/--decks-folder that matched nothing is almost
+            # certainly a typo'd path; escalating it to a full ~13,000-card
+            # download would be a nasty surprise.
+            console.print(
+                "[bold red]No card IDs found in the given deck file(s) or folder. "
+                "Check the path and try again.[/bold red]"
+            )
+            raise SystemExit(1)
     if deck_filter is not None:
         id_to_name = {cid: name for cid, name in full_id_to_name.items() if cid in deck_filter}
         missing_from_dbs = deck_filter - full_id_to_name.keys()
@@ -1678,9 +1717,12 @@ async def run(cfg: Config):
         id_to_name = full_id_to_name
 
     failure_cache_path = _failure_cache_path(cfg)
-    failure_cache = (
-        {} if cfg.recheck_missing or cfg.force else load_failure_cache(failure_cache_path)
-    )
+    failure_cache = load_failure_cache(failure_cache_path)
+    if cfg.recheck_missing or cfg.force:
+        # Forget only the cards in scope for THIS run. A deck-filtered recheck
+        # must not wipe cache entries for cards it never re-attempts.
+        for cid in id_to_name:
+            failure_cache.pop(cid, None)
 
     if cfg.repair:
         broken = find_broken_images(cfg.pics_path, set(id_to_name))
@@ -1714,7 +1756,10 @@ async def run(cfg: Config):
 
     # Field Spell playmat art (pics/field/) — same incremental + cache logic.
     field_cache_path = _field_failure_cache_path(cfg)
-    field_cache = {} if cfg.recheck_missing or cfg.force else load_failure_cache(field_cache_path)
+    field_cache = load_failure_cache(field_cache_path)
+    if cfg.recheck_missing or cfg.force:
+        for cid in id_to_name:
+            field_cache.pop(cid, None)
     missing_fields: list[int] = []
     if cfg.field_art:
         candidate_fields = sorted(cid for cid in field_ids if cid in id_to_name)
@@ -1770,8 +1815,8 @@ async def run(cfg: Config):
         if not want_textures:
             console.print("\n[bold green]All synced — nothing to download![/bold green]")
             if not cfg.dry_run:
-                await notify_if_update_available()
-            return
+                await notify_if_update_available(cfg)
+            return None
 
     if cfg.dry_run and missing_fields:
         console.print(
@@ -1819,10 +1864,14 @@ async def run(cfg: Config):
                 console.print(server_msg)
             if latest:
                 console.print(_update_message(latest))
+                if cfg.notice_sink is not None:
+                    cfg.notice_sink(f"A newer version ({latest}) is available")
 
         def make_worker(progress=None, task_id=None):
             async def worker():
                 while True:
+                    if cfg.cancel_event is not None and cfg.cancel_event.is_set():
+                        return
                     try:
                         card_id = queue.get_nowait()
                     except asyncio.QueueEmpty:
@@ -1857,7 +1906,12 @@ async def run(cfg: Config):
             return worker
 
         if missing_ids:
-            if RICH_AVAILABLE and not cfg.quiet:
+            if cfg.gui_progress is not None:
+                progress = cfg.gui_progress
+                task_id = progress.add_task("Syncing card artwork", total=len(missing_ids))
+                workers = [make_worker(progress, task_id)() for _ in range(cfg.concurrency)]
+                await asyncio.gather(*workers)
+            elif RICH_AVAILABLE and not cfg.quiet:
                 with Progress(
                     SpinnerColumn(),
                     TextColumn("[bold blue]{task.description}"),
@@ -1882,6 +1936,8 @@ async def run(cfg: Config):
             def make_field_worker(progress=None, task_id=None):
                 async def worker():
                     while True:
+                        if cfg.cancel_event is not None and cfg.cancel_event.is_set():
+                            return
                         try:
                             cid = field_queue.get_nowait()
                         except asyncio.QueueEmpty:
@@ -1906,7 +1962,13 @@ async def run(cfg: Config):
                 return worker
 
             field_workers = min(cfg.concurrency, 20)
-            if RICH_AVAILABLE and not cfg.quiet:
+            if cfg.gui_progress is not None:
+                progress = cfg.gui_progress
+                task_id = progress.add_task("Field Spell artwork", total=len(missing_fields))
+                await asyncio.gather(
+                    *[make_field_worker(progress, task_id)() for _ in range(field_workers)]
+                )
+            elif RICH_AVAILABLE and not cfg.quiet:
                 with Progress(
                     SpinnerColumn(),
                     TextColumn("[bold blue]{task.description}"),
@@ -1924,6 +1986,8 @@ async def run(cfg: Config):
 
         if want_textures and not cfg.dry_run:
             pack = await _resolve_texture_pack(session, cfg)
+            if cfg.notice_sink is not None:
+                cfg.notice_sink("Downloading curated textures…")
             console.print(f"\n[bold cyan]Downloading curated textures ({pack})...[/bold cyan]")
             got, already, total = await download_curated_textures(session, cfg, pack)
             if total:
@@ -1970,6 +2034,7 @@ async def run(cfg: Config):
 
     if missing_ids or missing_fields:
         print_summary(stats, cfg, perf_counter() - started_at, save_report_after)
+    return stats
 
 
 def should_pause_before_exit(cfg: Config | None) -> bool:
@@ -2006,7 +2071,15 @@ def main() -> int:
             # pinned 3.11 build (aiohttp needs the selector loop on Windows).
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-        asyncio.run(run(cfg))
+        launched_gui = False
+        if _should_show_gui(cfg) and gui.gui_available():
+            try:
+                exit_code = gui.run_app(cfg, VERSION, run, _apply_gui_choices)
+                launched_gui = True
+            except gui.GuiUnavailable:
+                launched_gui = False  # no display / broken Tk — console still works
+        if not launched_gui:
+            asyncio.run(run(cfg))
     except KeyboardInterrupt:
         exit_code = 130
         console.print("\n[yellow]Interrupted - partial progress is saved.[/yellow]")

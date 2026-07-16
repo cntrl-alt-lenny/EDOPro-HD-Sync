@@ -136,6 +136,15 @@ class DownloadFieldArtTests(unittest.TestCase):
         self.assertEqual(stats.field_failed, 1)
         self.assertIn(22702055, stats.field_transient_ids)
 
+    def test_falls_back_to_ignis_png_when_ygoprodeck_lacks_the_crop(self):
+        self.cfg.sources["field_backup"] = "http://ignis/field"
+        # YGOProDeck cropped .jpg 404s; the Ignis .png succeeds.
+        stats = self._download(_FakeSession([(404, b""), (200, PNG_BODY)]))
+
+        self.assertEqual(stats.field_ok, 1)
+        self.assertTrue(os.path.exists(os.path.join(main.field_art_dir(self.cfg), "22702055.png")))
+        self.assertFalse(os.path.exists(os.path.join(main.field_art_dir(self.cfg), "22702055.jpg")))
+
 
 class FieldArtHelpersTests(unittest.TestCase):
     def setUp(self):
