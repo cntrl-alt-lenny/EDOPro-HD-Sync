@@ -1,8 +1,10 @@
 #!/bin/bash
-# EDOPro HD Sync — Linux Launcher (single file)
+# EDOPro HD Sync — Linux Launcher
 #
-# Double-click it (choose "Run" if your file manager asks) or run it from a
-# terminal. The first time, pick your ProjectIgnis folder; it remembers it.
+# Unzip the download, then run ./EDOPro-HD-Sync.sh (or double-click it and
+# choose "Run"). The first time it asks for your ProjectIgnis folder; after
+# that it just works. The app that ships next to this launcher is installed
+# into a support folder and kept up to date automatically.
 
 APP_NAME="EDOPro-HD-Sync-Linux"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -11,15 +13,12 @@ PREFS="$SUPPORT_DIR/edopro_folder.txt"
 INSTALLED_FILE="$SUPPORT_DIR/binary_version.txt"
 REPO_API="https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest"
 
-mkdir -p "$SUPPORT_DIR"
+# The launcher always runs the copy it manages here, so updates work the same
+# whether you kept the extracted folder or moved this file somewhere else.
+BINARY="$SUPPORT_DIR/$APP_NAME"
+BUNDLED="$SCRIPT_DIR/app/$APP_NAME"
 
-# Use the app if it's shipped next to this file (zip bundle); otherwise keep it
-# in a support folder so you only ever need this one file.
-if [ -x "$SCRIPT_DIR/$APP_NAME" ]; then
-    BINARY="$SCRIPT_DIR/$APP_NAME"
-else
-    BINARY="$SUPPORT_DIR/$APP_NAME"
-fi
+mkdir -p "$SUPPORT_DIR"
 
 # Print the SHA-256 of a file as a bare hex string (Linux ships sha256sum).
 hash_file() {
@@ -31,9 +30,12 @@ hash_file() {
 }
 
 # A folder looks like EDOPro only if it has actual card databases —
-# the same test the app applies, so the two never disagree.
+# mirroring the app's own get_db_files() rule exactly.
 looks_like_edopro() {
-    [ -n "$(find "$1" -maxdepth 3 -name '*.cdb' 2>/dev/null | head -1)" ]
+    [ -f "$1/cards.cdb" ] && return 0
+    [ -n "$(find "$1/expansions" -maxdepth 1 -name '*.cdb' 2>/dev/null | head -1)" ] && return 0
+    [ -n "$(find "$1/repositories" -name '*.delta.cdb' 2>/dev/null | head -1)" ] && return 0
+    return 1
 }
 
 # Native folder picker (zenity/kdialog), falling back to a terminal prompt.
@@ -51,27 +53,27 @@ choose_folder() {
     fi
 }
 
-# Ask GitHub for the latest release (tag + download links). Quietly does
-# nothing when offline so the cached app still runs without internet.
+# Ask GitHub for the latest release: tag, download URL, and the SHA-256 digest
+# GitHub publishes for the asset. Silent when offline so the app still runs.
 LATEST_TAG=""
 ZIP_URL=""
-SHA_URL=""
+ZIP_DIGEST=""
 fetch_release_info() {
     local json
-    json="$(curl -fsSL --max-time 10 "$REPO_API" 2>/dev/null)"
+    json="$(curl -fsSL --max-time 10 "$REPO_API" 2>/dev/null)" || return 0
     LATEST_TAG="$(printf '%s\n' "$json" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
-    ZIP_URL="$(printf '%s\n' "$json" | sed -n 's/.*"browser_download_url": *"\(https[^"]*EDOPro-HD-Sync-Linux-v[^"]*\.zip\)".*/\1/p' | head -1)"
-    SHA_URL="$(printf '%s\n' "$json" | sed -n 's/.*"browser_download_url": *"\(https[^"]*EDOPro-HD-Sync-Linux-v[^"]*\.zip\.sha256\)".*/\1/p' | head -1)"
+    ZIP_URL="$(printf '%s\n' "$json" | awk '/"name": "EDOPro-HD-Sync-Linux-v/{f=1} f && /"browser_download_url":/{sub(/.*": "/,""); sub(/".*/,""); print; exit}')"
+    ZIP_DIGEST="$(printf '%s\n' "$json" | awk '/"name": "EDOPro-HD-Sync-Linux-v/{f=1} f && /"digest":/{sub(/.*sha256:/,""); sub(/".*/,""); print; exit}')"
 }
 
-install_app() {
-    # Download + verify + unpack into a scratch folder; the existing app is
-    # replaced only after every step succeeds, so a failed update can never
-    # break a working install.
-    local bin_dir new_dir expected actual
+# Download the release zip, verify it, and install the app from it. The old
+# app is replaced only after every step succeeds, so a failed update can
+# never break a working install.
+install_from_release() {
+    local bin_dir new_dir actual
     bin_dir="$(dirname "$BINARY")"
     new_dir="$bin_dir/_new.$$"
-    rm -rf "$new_dir"
+    rm -rf "$bin_dir"/_new.* 2>/dev/null  # sweep scratch dirs orphaned by interrupts
     mkdir -p "$new_dir" || return 1
 
     if [ -z "$ZIP_URL" ]; then
@@ -83,25 +85,19 @@ install_app() {
         rm -rf "$new_dir"; return 1
     fi
 
-    # Verify the download against the published SHA-256 checksum before trusting it.
-    if [ -n "$SHA_URL" ] && curl -fsSL "$SHA_URL" -o "$new_dir/app.zip.sha256"; then
-        expected="$(awk '{print $1}' "$new_dir/app.zip.sha256")"
+    if [ -n "$ZIP_DIGEST" ]; then
         actual="$(hash_file "$new_dir/app.zip")"
         if [ -z "$actual" ]; then
-            echo "No SHA-256 tool found — skipping checksum verification."
-        elif [ -z "$expected" ]; then
-            echo "Could not read the checksum file — skipping verification."
-        elif [ "$expected" != "$actual" ]; then
+            echo "No SHA-256 tool found — skipping verification."
+        elif [ "$actual" != "$ZIP_DIGEST" ]; then
             echo "Checksum mismatch — the download may be corrupted or tampered with."
             rm -rf "$new_dir"; return 1
         else
-            echo "Checksum verified."
+            echo "Download verified."
         fi
-    else
-        echo "Checksum file unavailable — skipping verification."
     fi
 
-    if ! unzip -o -j "$new_dir/app.zip" "EDOPro HD Sync Linux/EDOPro-HD-Sync-Linux" -d "$new_dir"; then
+    if ! unzip -o -j "$new_dir/app.zip" "*/app/$APP_NAME" -d "$new_dir" >/dev/null; then
         echo "Unzip failed. The download may be corrupted."
         rm -rf "$new_dir"; return 1
     fi
@@ -118,32 +114,51 @@ install_app() {
     return 0
 }
 
-# --- Install or update the app (only the copy this launcher manages) ---
-if [ "$BINARY" = "$SUPPORT_DIR/$APP_NAME" ]; then
-    fetch_release_info
-    if [ ! -x "$BINARY" ]; then
+# Install the app that shipped next to this launcher — no download needed.
+seed_from_bundle() {
+    cp "$BUNDLED" "$BINARY" || return 1
+    chmod +x "$BINARY"
+    if [ -f "$SCRIPT_DIR/app/version.txt" ]; then
+        cat "$SCRIPT_DIR/app/version.txt" > "$INSTALLED_FILE"
+        printf '\n' >> "$INSTALLED_FILE"
+    else
+        : > "$INSTALLED_FILE"
+    fi
+    return 0
+}
+
+fetch_release_info
+
+if [ ! -x "$BINARY" ]; then
+    if [ -f "$BUNDLED" ]; then
+        echo "Setting up EDOPro HD Sync..."
+        if ! seed_from_bundle; then
+            echo "Could not install the app. Please re-download and try again."
+            exit 1
+        fi
+    else
         echo "Setting up EDOPro HD Sync (first run)..."
-        if ! install_app; then
+        if ! install_from_release; then
             echo "Setup failed. Check your internet connection and try again."
             exit 1
         fi
-        echo ""
-    elif [ -n "$LATEST_TAG" ] && [ -n "$ZIP_URL" ]; then
-        installed="$(cat "$INSTALLED_FILE" 2>/dev/null)"
-        if [ "$installed" != "$LATEST_TAG" ]; then
-            echo "A new version ($LATEST_TAG) is available — updating..."
-            if install_app; then
-                echo "Updated to $LATEST_TAG."
-            else
-                echo "Update failed — keeping the current version for now."
-            fi
-            echo ""
+    fi
+    echo ""
+elif [ -n "$LATEST_TAG" ] && [ -n "$ZIP_URL" ]; then
+    installed="$(cat "$INSTALLED_FILE" 2>/dev/null | tr -d '[:space:]')"
+    if [ "$installed" != "$LATEST_TAG" ]; then
+        echo "A new version ($LATEST_TAG) is available — updating..."
+        if install_from_release; then
+            echo "Updated to $LATEST_TAG."
+        else
+            echo "Update failed — keeping the current version for now."
         fi
+        echo ""
     fi
 fi
 
 if [ ! -x "$BINARY" ]; then
-    echo "The app is missing and could not be downloaded. Please try again later."
+    echo "The app is missing and could not be installed. Please try again later."
     exit 1
 fi
 

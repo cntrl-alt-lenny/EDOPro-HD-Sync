@@ -134,33 +134,39 @@ jobs:
       shell: pwsh
       run: |
         $version = "${{ steps.release_version.outputs.value }}"
-        $bundleDir = "dist/EDOPro HD Sync Windows"
+        $bundleDir = "dist/EDOPro HD Sync"
         $archive = "dist/EDOPro-HD-Sync-Windows-v$version.zip"
-        if (Test-Path $bundleDir) {
-          Remove-Item $bundleDir -Recurse -Force
-        }
-        if (Test-Path $archive) {
-          Remove-Item $archive -Force
-        }
-        New-Item -ItemType Directory -Path $bundleDir | Out-Null
-        Copy-Item "dist/EDOPro-HD-Sync.exe" -Destination "$bundleDir/EDOPro-HD-Sync.exe"
+        if (Test-Path $bundleDir) { Remove-Item $bundleDir -Recurse -Force }
+        if (Test-Path $archive) { Remove-Item $archive -Force }
+        New-Item -ItemType Directory -Path "$bundleDir/app" | Out-Null
+        Copy-Item "dist/EDOPro-HD-Sync.exe" -Destination "$bundleDir/app/EDOPro-HD-Sync.exe"
+        Set-Content -LiteralPath "$bundleDir/app/version.txt" -Value "v$version" -NoNewline
+        Copy-Item "EDOPro-HD-Sync.bat" -Destination "$bundleDir/EDOPro-HD-Sync.bat"
         Copy-Item "release_assets/ReadMe-Windows.txt" -Destination "$bundleDir/ReadMe.txt"
         Compress-Archive -Path $bundleDir -DestinationPath $archive -Force
 
+    # zip (unlike a raw browser download) preserves the executable bit, which is
+    # why the launcher ships inside an archive rather than as a bare file.
     - name: Package (macOS)
       if: matrix.os == 'macos-latest'
       shell: bash
       run: |
         version="${{ steps.release_version.outputs.value }}"
         archive="EDOPro-HD-Sync-macOS-v${version}.zip"
-        mv dist/EDOPro-HD-Sync dist/EDOPro-HD-Sync-macOS
-        chmod +x dist/EDOPro-HD-Sync-macOS
-        chmod +x EDOPro-HD-Sync.command
-        mkdir -p "dist/EDOPro HD Sync MacOS"
-        mv dist/EDOPro-HD-Sync-macOS "dist/EDOPro HD Sync MacOS/"
-        cp EDOPro-HD-Sync.command "dist/EDOPro HD Sync MacOS/"
-        cp release_assets/ReadMe-MacOS.txt "dist/EDOPro HD Sync MacOS/ReadMe.txt"
-        cd dist && zip -r "$archive" "EDOPro HD Sync MacOS"
+        bundleDir="dist/EDOPro HD Sync"
+
+        rm -rf "$bundleDir" "dist/$archive"
+        mkdir -p "$bundleDir/app"
+
+        mv dist/EDOPro-HD-Sync "$bundleDir/app/EDOPro-HD-Sync-macOS"
+        chmod +x "$bundleDir/app/EDOPro-HD-Sync-macOS"
+        printf 'v%s' "$version" > "$bundleDir/app/version.txt"
+
+        cp EDOPro-HD-Sync.command "$bundleDir/EDOPro-HD-Sync.command"
+        chmod +x "$bundleDir/EDOPro-HD-Sync.command"
+        cp release_assets/ReadMe-MacOS.txt "$bundleDir/ReadMe.txt"
+
+        cd dist && zip -r "$archive" "EDOPro HD Sync"
 
     - name: Package (Linux)
       if: matrix.os == 'ubuntu-latest'
@@ -168,20 +174,37 @@ jobs:
       run: |
         version="${{ steps.release_version.outputs.value }}"
         archive="EDOPro-HD-Sync-Linux-v${version}.zip"
-        bundleDir="dist/EDOPro HD Sync Linux"
+        bundleDir="dist/EDOPro HD Sync"
 
         rm -rf "$bundleDir" "dist/$archive"
-        mkdir -p "$bundleDir"
+        mkdir -p "$bundleDir/app"
 
-        mv dist/EDOPro-HD-Sync "$bundleDir/EDOPro-HD-Sync-Linux"
-        chmod +x "$bundleDir/EDOPro-HD-Sync-Linux"
+        mv dist/EDOPro-HD-Sync "$bundleDir/app/EDOPro-HD-Sync-Linux"
+        chmod +x "$bundleDir/app/EDOPro-HD-Sync-Linux"
+        printf 'v%s' "$version" > "$bundleDir/app/version.txt"
 
         cp EDOPro-HD-Sync.sh "$bundleDir/EDOPro-HD-Sync.sh"
         chmod +x "$bundleDir/EDOPro-HD-Sync.sh"
-
         cp release_assets/ReadMe-Linux.txt "$bundleDir/ReadMe.txt"
 
-        cd dist && zip -r "$archive" "EDOPro HD Sync Linux"
+        cd dist && zip -r "$archive" "EDOPro HD Sync"
+
+    - name: Verify the launcher kept its executable bit
+      if: matrix.os != 'windows-latest'
+      shell: bash
+      run: |
+        version="${{ steps.release_version.outputs.value }}"
+        case "${{ matrix.os }}" in
+          macos-latest) archive="dist/EDOPro-HD-Sync-macOS-v${version}.zip"; launcher="EDOPro HD Sync/EDOPro-HD-Sync.command" ;;
+          *)            archive="dist/EDOPro-HD-Sync-Linux-v${version}.zip"; launcher="EDOPro HD Sync/EDOPro-HD-Sync.sh" ;;
+        esac
+        rm -rf dist/_verify && mkdir -p dist/_verify
+        unzip -q "$archive" -d dist/_verify
+        if [ ! -x "dist/_verify/$launcher" ]; then
+          echo "::error::Launcher is not executable inside the release zip - users would get a permissions error."
+          exit 1
+        fi
+        echo "Launcher is executable inside the zip."
 
     - name: Determine release file
       id: release_file
@@ -196,20 +219,9 @@ jobs:
           echo "path=dist/EDOPro-HD-Sync-Linux-v${version}.zip" >> "$GITHUB_OUTPUT"
         fi
 
-    - name: Compute SHA256 checksum
-      id: checksum
-      shell: bash
-      run: |
-        archive="${{ steps.release_file.outputs.path }}"
-        checksum_path="${archive}.sha256"
-        if [ "${{ matrix.os }}" = "macos-latest" ]; then
-          (cd "$(dirname "$archive")" && shasum -a 256 "$(basename "$archive")") > "$checksum_path"
-        else
-          (cd "$(dirname "$archive")" && sha256sum "$(basename "$archive")") > "$checksum_path"
-        fi
-        echo "path=${checksum_path}" >> "$GITHUB_OUTPUT"
-        cat "$checksum_path"
-
+    # Exactly one asset per platform: Windows, macOS, Linux. Downloads are
+    # verified against the SHA-256 digest GitHub publishes in its release API,
+    # so no separate .sha256 files are needed.
     - name: Release
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
@@ -217,27 +229,4 @@ jobs:
         name: EDOPro HD Sync v${{ steps.release_version.outputs.value }}
         generate_release_notes: true
         fail_on_unmatched_files: true
-        files: |
-          ${{ steps.release_file.outputs.path }}
-          ${{ steps.checksum.outputs.path }}
-
-    # Attach the launcher on its own so Mac users can grab a single double-clickable
-    # file (it self-downloads the app). The zip bundle above still works too.
-    - name: Attach standalone macOS launcher
-      if: matrix.os == 'macos-latest' && startsWith(github.ref, 'refs/tags/')
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: gh release upload "${GITHUB_REF_NAME}" EDOPro-HD-Sync.command --clobber
-
-    - name: Attach standalone Linux launcher
-      if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/')
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: gh release upload "${GITHUB_REF_NAME}" EDOPro-HD-Sync.sh --clobber
-
-    - name: Attach standalone Windows launcher
-      if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
-      shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: gh release upload "${GITHUB_REF_NAME}" EDOPro-HD-Sync.bat --clobber
+        files: ${{ steps.release_file.outputs.path }}

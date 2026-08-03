@@ -14,22 +14,28 @@ $InstalledFile = Join-Path $SupportDir 'binary_version.txt'
 $Api = 'https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest'
 $UA = 'EDOPro-HD-Sync-Launcher'
 
+# The launcher always runs the copy it manages in LOCALAPPDATA, so updates
+# work the same wherever this file ends up. The app shipped next to it (in
+# the extracted zip) is used to install without downloading anything.
+$SelfDir = Split-Path -Parent $env:HDSYNC_SELF
+$Bundled = Join-Path $SelfDir ('app\' + $AppName)
+$BundledVersionFile = Join-Path $SelfDir 'app\version.txt'
+
 New-Item -ItemType Directory -Force -Path $SupportDir | Out-Null
 
-# One quick release check: used for the first download and to spot updates.
-# When GitHub is unreachable the cached app still runs.
+# One quick release check: used to spot updates (and to install when the app
+# was not shipped alongside). Silent when GitHub is unreachable.
 $rel = $null
 try {
     $rel = Invoke-RestMethod -UseBasicParsing -UserAgent $UA -Uri $Api -TimeoutSec 15
 } catch { }
 
-function Install-App {
+function Install-FromRelease {
     # Download + verify into a scratch folder; the existing app is replaced
     # only after every step succeeds, so a failed update never breaks a
     # working install.
     if (-not $rel) { Write-Host 'Could not reach GitHub.'; return $false }
     $zip = $rel.assets | Where-Object { $_.name -like 'EDOPro-HD-Sync-Windows-v*.zip' } | Select-Object -First 1
-    $sha = $rel.assets | Where-Object { $_.name -like 'EDOPro-HD-Sync-Windows-v*.zip.sha256' } | Select-Object -First 1
     if (-not $zip) { Write-Host 'Could not find the latest Windows download in the release.'; return $false }
 
     $work = Join-Path $env:TEMP ('EDOPro-HD-Sync-new-' + [System.IO.Path]::GetRandomFileName())
@@ -38,30 +44,23 @@ function Install-App {
         $tmpZip = Join-Path $work 'app.zip'
         Invoke-WebRequest -UseBasicParsing -UserAgent $UA -Uri $zip.browser_download_url -OutFile $tmpZip
 
-        if ($sha) {
-            try {
-                $shaRaw = (Invoke-WebRequest -UseBasicParsing -UserAgent $UA -Uri $sha.browser_download_url).Content
-                # GitHub serves .sha256 as octet-stream: .Content is byte[] in PS 5.1.
-                if ($shaRaw -is [byte[]]) { $shaText = [System.Text.Encoding]::ASCII.GetString($shaRaw) } else { $shaText = [string]$shaRaw }
-                $expected = (($shaText -split '\s+') | Select-Object -First 1).Trim().ToLower()
-                $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $tmpZip).Hash.ToLower()
-                if ($expected -and ($expected -ne $actual)) {
-                    Write-Host 'Checksum mismatch - the download may be corrupted or tampered with.'
-                    return $false
-                }
-                Write-Host 'Checksum verified.'
-            } catch {
-                Write-Host 'Could not verify the checksum - continuing.'
+        # GitHub publishes the SHA-256 of every asset in its release API.
+        if ($zip.digest -and ($zip.digest -like 'sha256:*')) {
+            $expected = ($zip.digest -replace '^sha256:', '').Trim().ToLower()
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $tmpZip).Hash.ToLower()
+            if ($expected -ne $actual) {
+                Write-Host 'Checksum mismatch - the download may be corrupted or tampered with.'
+                return $false
             }
+            Write-Host 'Download verified.'
         }
 
         $extract = Join-Path $work 'unzipped'
         Expand-Archive -LiteralPath $tmpZip -DestinationPath $extract -Force
         $exe = Get-ChildItem -LiteralPath $extract -Recurse -Filter $AppName | Select-Object -First 1
-        if (-not $exe) { Write-Host 'Could not find the app after unzip.'; return $false }
+        if (-not $exe) { Write-Host 'Could not find the app inside the download.'; return $false }
 
-        # The old app is replaced only now, after everything succeeded -
-        # staged beside the target so the final step is a same-volume rename.
+        # Staged beside the target so the final step is a same-volume rename.
         $staged = $Binary + '.new'
         Copy-Item -LiteralPath $exe.FullName -Destination $staged -Force
         Move-Item -LiteralPath $staged -Destination $Binary -Force
@@ -75,9 +74,30 @@ function Install-App {
     }
 }
 
+function Install-FromBundle {
+    # Install the app that shipped next to this launcher - no download needed.
+    try {
+        $staged = $Binary + '.new'
+        Copy-Item -LiteralPath $Bundled -Destination $staged -Force
+        Move-Item -LiteralPath $staged -Destination $Binary -Force
+        $bundledVersion = ''
+        if (Test-Path -LiteralPath $BundledVersionFile) {
+            $bundledVersion = ([string](Get-Content -LiteralPath $BundledVersionFile -Raw -ErrorAction SilentlyContinue)).Trim()
+        }
+        Set-Content -LiteralPath $InstalledFile -Value $bundledVersion
+        return $true
+    } catch {
+        Write-Host ('Could not install the app: ' + $_.Exception.Message)
+        return $false
+    }
+}
+
 if (-not (Test-Path -LiteralPath $Binary)) {
-    Write-Host 'Setting up EDOPro HD Sync (first run)...'
-    if (-not (Install-App)) {
+    Write-Host 'Setting up EDOPro HD Sync...'
+    $ok = $false
+    if (Test-Path -LiteralPath $Bundled) { $ok = Install-FromBundle }
+    if (-not $ok) { $ok = Install-FromRelease }
+    if (-not $ok) {
         Write-Host 'Setup failed. Check your internet connection and try again.'
         exit 1
     }
@@ -85,7 +105,7 @@ if (-not (Test-Path -LiteralPath $Binary)) {
     $installed = ([string](Get-Content -LiteralPath $InstalledFile -Raw -ErrorAction SilentlyContinue)).Trim()
     if ($installed -ne $rel.tag_name) {
         Write-Host ("A new version (" + $rel.tag_name + ") is available - updating...")
-        if (Install-App) {
+        if (Install-FromRelease) {
             Write-Host ('Updated to ' + $rel.tag_name + '.')
         } else {
             Write-Host 'Update failed - keeping the current version for now.'

@@ -1,32 +1,31 @@
 EDOPro HD Sync for macOS
 ========================
 
-Easiest way (one file)
-----------------------
-1. Download "EDOPro-HD-Sync.command" from the release.
-2. Double-click it.
+How to use it
+-------------
+1. Unzip the download (double-click the .zip in Finder).
+2. Open the "EDOPro HD Sync" folder and double-click EDOPro-HD-Sync.command
 3. The first time, pick your ProjectIgnis folder (the dialog starts in
    Applications). It remembers your choice for next time.
-4. That's it - it downloads the app and your HD card artwork, then runs.
+4. Tick what you want in the window that opens, then press Start.
 
 If macOS asks the very first time
 ---------------------------------
 Because the file came from the web, macOS may ask once before opening it.
-Just RIGHT-CLICK the file and choose "Open" (then "Open" again). You do NOT
-need to go into System Settings. After the first run it opens normally.
+Just RIGHT-CLICK EDOPro-HD-Sync.command and choose "Open" (then "Open" again).
+You do NOT need to go into System Settings. After that it opens normally.
 
-(The app itself is downloaded behind the scenes and is not flagged by macOS,
-so only this launcher file may prompt, and only once.)
-
-Prefer the zip?
----------------
-The "EDOPro-HD-Sync-macOS-vVERSION.zip" still works: unzip it, open the
-"EDOPro HD Sync MacOS" folder, and double-click EDOPro-HD-Sync.command inside.
+Keep the two files together
+---------------------------
+EDOPro-HD-Sync.command and the "app" folder next to it belong together - the
+launcher installs the app from that folder on the first run. After that you
+can keep or delete the extracted folder; the app lives in:
+  ~/Library/Application Support/EDOPro-HD-Sync
 
 Helpful notes
 -------------
 - The app opens a small window: tick what you want (field art, only your decks, textures, repair), press Start, and watch the progress right in the window.
-- The one-file launcher keeps the app up to date automatically: when a new version is released, it downloads it on the next run.
+- The launcher keeps the app up to date automatically: when a new version is released, it installs it on the next run (verified against GitHub's published checksum).
 - It downloads only missing artwork by default (fast). If everything is already there it offers to re-download all; or run with --force.
 - The launcher and its settings live in:
   ~/Library/Application Support/EDOPro-HD-Sync

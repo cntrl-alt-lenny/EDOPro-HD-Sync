@@ -1,20 +1,23 @@
 EDOPro HD Sync for Linux
 ========================
 
-Easiest way (one file)
-----------------------
-1. Download "EDOPro-HD-Sync.sh" from the release.
-2. Run it: ./EDOPro-HD-Sync.sh   (or double-click and choose "Run").
-3. Pick your ProjectIgnis folder when asked (it remembers your choice).
-That's it - it downloads the app and your HD card artwork, then runs.
+How to use it
+-------------
+1. Unzip the download.
+2. Open the "EDOPro HD Sync" folder and run ./EDOPro-HD-Sync.sh
+   (or double-click it and choose "Run").
+3. The first time, pick your ProjectIgnis folder. It remembers your choice.
+4. Tick what you want in the window that opens, then press Start.
 
 The folder picker needs zenity or kdialog (installed on most desktops). If you
 run it from a terminal instead, it will ask you to type the path.
 
-Prefer the zip?
----------------
-Unzip "EDOPro-HD-Sync-Linux-vVERSION.zip", open the "EDOPro HD Sync Linux"
-folder, and run ./EDOPro-HD-Sync.sh from there.
+Keep the two files together
+---------------------------
+EDOPro-HD-Sync.sh and the "app" folder next to it belong together - the
+launcher installs the app from that folder on the first run. After that you
+can keep or delete the extracted folder; the app lives in:
+  ~/.local/share/EDOPro-HD-Sync
 
 Helpful notes
 -------------

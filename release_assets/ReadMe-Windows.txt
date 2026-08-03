@@ -1,25 +1,27 @@
 EDOPro HD Sync for Windows
 ==========================
 
-Easiest way (one file)
-----------------------
-1. Download "EDOPro-HD-Sync.bat" from the release.
-2. Double-click it.
+How to use it
+-------------
+1. Unzip the download (right-click the .zip -> "Extract All").
+2. Open the "EDOPro HD Sync" folder and double-click EDOPro-HD-Sync.bat
 3. Pick your EDOPro folder when asked (it remembers your choice).
-That's it - it downloads the app and your HD card artwork, then runs.
+4. Tick what you want in the window that opens, then press Start.
 
-If Windows SmartScreen warns about the .bat, click "More info" then "Run anyway"
-(the app it downloads is unblocked automatically, so it won't keep prompting).
+If Windows SmartScreen warns about the .bat, click "More info" then
+"Run anyway".
 
-Prefer the zip?
----------------
-Extract "EDOPro-HD-Sync-Windows-vVERSION.zip", open the "EDOPro HD Sync Windows"
-folder, run EDOPro-HD-Sync.exe, and pick your EDOPro folder when asked.
+Keep the two files together
+---------------------------
+EDOPro-HD-Sync.bat and the "app" folder next to it belong together - the
+launcher installs the app from that folder on the first run. After that you
+can keep or delete the extracted folder; the app lives in:
+  %LOCALAPPDATA%\EDOPro-HD-Sync
 
 Helpful notes
 -------------
 - The app opens a small window: tick what you want (field art, only your decks, textures, repair), press Start, and watch the progress right in the window.
-- The one-file launcher keeps the app up to date automatically: when a new version is released, it downloads it on the next run.
+- The launcher keeps the app up to date automatically: when a new version is released, it installs it on the next run (verified against GitHub's published checksum).
 - It downloads only missing artwork by default (fast). To re-download everything, answer "y" when it offers a full refresh, or run with --force.
 - The tool remembers your chosen EDOPro folder in config.json beside the exe.
 - The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.

@@ -26,15 +26,15 @@
 
 ## Download
 
-Grab **one file** for your platform — no install, no Python, no setup.
+One download per platform on the [Releases page](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) — no install, no Python, no setup.
 
-| Platform | Get this file | Then |
+| Platform | Download | Then |
 |---|---|---|
-| **Windows** | [`EDOPro-HD-Sync.bat`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Double-click it. If SmartScreen warns, choose **More info → Run anyway**. |
-| **macOS** | [`EDOPro-HD-Sync.command`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Double-click it (first time: **right-click → Open**), then pick your ProjectIgnis folder. |
-| **Linux** | [`EDOPro-HD-Sync.sh`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Run `./EDOPro-HD-Sync.sh`, then pick your ProjectIgnis folder. |
+| **Windows** | [`EDOPro-HD-Sync-Windows.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, double-click **EDOPro-HD-Sync.bat**. If SmartScreen warns, choose **More info → Run anyway**. |
+| **macOS** | [`EDOPro-HD-Sync-macOS.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, double-click **EDOPro-HD-Sync.command** (the first time: **right-click → Open**). |
+| **Linux** | [`EDOPro-HD-Sync-Linux.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, run **./EDOPro-HD-Sync.sh** (or double-click and choose *Run*). |
 
-Each launcher downloads the app (checksum-verified), remembers your EDOPro folder, and **keeps itself on the latest version automatically**. Full platform zip bundles with a `ReadMe.txt` are also on the [Releases page](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest).
+Pick your ProjectIgnis folder the first time and it's remembered from then on. The app installs itself from the download and **keeps itself up to date automatically**, verifying every update against GitHub's published checksum.
 
 ## Features
 
