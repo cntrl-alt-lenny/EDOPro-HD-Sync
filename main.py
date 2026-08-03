@@ -1663,6 +1663,8 @@ async def run(cfg: Config):
                 "[yellow]No decks found in the EDOPro deck folder — "
                 "syncing everything instead.[/yellow]"
             )
+            if cfg.notice_sink is not None:
+                cfg.notice_sink("No decks found — syncing everything instead")
 
     # Fresh install with decks? Offer the fast path before a ~13,000-card sync.
     if (
@@ -1691,6 +1693,8 @@ async def run(cfg: Config):
             console.print(
                 "[yellow]No card IDs found in your decks — syncing everything instead.[/yellow]"
             )
+            if cfg.notice_sink is not None:
+                cfg.notice_sink("Your decks are empty — syncing everything instead")
             deck_filter = None
         else:
             # An explicit --deck/--decks-folder that matched nothing is almost

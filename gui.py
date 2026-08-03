@@ -9,6 +9,7 @@ run_app raises GuiUnavailable and the caller falls back to the console flow.
 """
 
 import contextlib
+import os
 import platform
 import queue
 import sys
@@ -344,6 +345,7 @@ class _App:
             self.root.resizable(False, False)
             _apply_style(self.root)
             _apply_windows_dark_titlebar(self.root)
+            self._set_app_icon()
 
             self.shell = ttk.Frame(self.root)
             self.shell.grid(sticky="nsew")
@@ -367,6 +369,20 @@ class _App:
             with contextlib.suppress(Exception):
                 self.root.destroy()
             raise GuiUnavailable(str(exc)) from exc
+
+    def _set_app_icon(self) -> None:
+        """Use the project icon instead of Tk's default feather in the taskbar."""
+        with contextlib.suppress(Exception):
+            base = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+            for candidate in (
+                os.path.join(base, "app-icon.png"),
+                os.path.join(base, "assets", "app-icon.png"),
+            ):
+                if os.path.exists(candidate):
+                    # Keep a reference or Tk garbage-collects the image.
+                    self._icon = tk.PhotoImage(file=candidate)
+                    self.root.iconphoto(True, self._icon)
+                    return
 
     # -- screens ---------------------------------------------------------
 
@@ -439,6 +455,11 @@ class _App:
         counts = ttk.Frame(f)
         counts.grid(sticky="ew", pady=(10, 16))
         counts.columnconfigure(0, weight=1)
+        # Notices (e.g. "no decks found — syncing everything") share the same
+        # variable as the options screen so they're visible mid-sync too.
+        ttk.Label(counts, textvariable=self.notice_var, style="Notice.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
         self.count_var = tk.StringVar(value="")
         ttk.Label(counts, textvariable=self.count_var, style="Faint.TLabel").grid(
             row=0, column=1, sticky="e"

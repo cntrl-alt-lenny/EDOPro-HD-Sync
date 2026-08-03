@@ -38,15 +38,15 @@ Pick your ProjectIgnis folder the first time and it's remembered from then on. T
 
 ## Features
 
-- **Tick-box options window** — the packaged app opens a small window on Windows, macOS, and Linux: pick field art, only-my-decks, textures, repair, or a full refresh, then press Start.
+- **One simple window** — tick what you want, press Start, and watch the live progress and results right in the window. Same experience on Windows, macOS, and Linux.
 - **Every card type covered** — official, Rush Duel, and anime/custom cards are all fetched directly by the same IDs EDOPro uses.
 - **Field Spell playmat art** — the cropped artwork EDOPro displays on the board is downloaded into `pics/field/` automatically.
-- **Deck-first sync** — `--my-decks` (or its tick-box) only fetches cards used in your decks, so a fresh install is playable in minutes instead of hours.
-- **Coverage at a glance** — `--stats` shows artwork coverage and disk usage without downloading a thing.
-- **Repair mode** — `--repair` finds corrupt or half-downloaded images and re-fetches them.
+- **Deck-first sync** — tick *Only cards from my decks* (or use `--my-decks`) and a fresh install is playable in minutes instead of hours.
+- **Coverage at a glance** — the *Show coverage* button (or `--stats`) tells you how complete your artwork is without downloading a thing.
+- **Repair mode** — tick *Repair broken images* (or use `--repair`) to find and re-fetch corrupt or half-downloaded files.
 - **Curated textures** — optionally grab a hand-picked set of backgrounds and card sleeves.
-- **Self-updating launchers** — one double-clickable file per platform installs new versions on its own.
-- **Safe and resumable** — checksum-verified downloads, a 14-day failure cache so known-missing cards aren't hammered, and optional timestamped sync reports.
+- **Automatic updates** — new versions install themselves the next time you run it, verified against GitHub's published checksum.
+- **Safe and resumable** — verified downloads, a 14-day failure cache so known-missing cards aren't hammered, and optional timestamped sync reports.
 
 ## How it works
 

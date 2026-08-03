@@ -21,19 +21,22 @@ can keep or delete the extracted folder; the app lives in:
 
 Helpful notes
 -------------
-- The app opens a small window: tick what you want (field art, only your decks, textures, repair), press Start, and watch the progress right in the window.
-- The launcher downloads the app automatically and keeps it up to date when new versions are released.
-- It downloads only missing artwork by default (fast). To re-download everything, answer "y" when it offers a full refresh, or run with --force.
-- It remembers your chosen EDOPro folder for next time.
-- The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
-- Multi-art cards (e.g. Ring of Destruction, Rescue Cat) get distinct artwork for each variant automatically.
-- You can also download curated textures (custom backgrounds & card sleeves): answer "y" when the tool asks, or run with --textures.
-- Works on Steam Deck (Desktop Mode), Ubuntu, Fedora, Arch, etc. — anything x86_64 Linux.
+- Everything happens in one small window: tick what you want (field art,
+  only your decks, textures, repair), press Start, and watch the progress.
+- Updates are automatic: when a new version is released, the launcher
+  installs it on the next run (verified against GitHub's published checksum).
+- Only missing artwork is downloaded, so repeat runs are fast. Tick
+  "Re-download everything" in the window for a full refresh.
+- "Show coverage" tells you how much artwork you have without downloading.
+- Rush Duel, anime, GOAT, Pre-Errata, and alternate artworks are all covered,
+  plus the playmat art for Field Spells.
+- Works on Steam Deck (Desktop Mode), Ubuntu, Fedora, Arch, etc. -
+  anything x86_64 Linux.
 
 Quick sanity check
 ------------------
 From a terminal in this folder you can also run:
 
-./EDOPro-HD-Sync-Linux --health-check
+app/EDOPro-HD-Sync-Linux --health-check
 
 That runs a quick offline check to verify the tool is working correctly.

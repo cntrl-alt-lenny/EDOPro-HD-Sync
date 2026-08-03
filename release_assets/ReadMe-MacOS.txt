@@ -24,16 +24,15 @@ can keep or delete the extracted folder; the app lives in:
 
 Helpful notes
 -------------
-- The app opens a small window: tick what you want (field art, only your decks, textures, repair), press Start, and watch the progress right in the window.
-- The launcher keeps the app up to date automatically: when a new version is released, it installs it on the next run (verified against GitHub's published checksum).
-- It downloads only missing artwork by default (fast). If everything is already there it offers to re-download all; or run with --force.
-- The launcher and its settings live in:
-  ~/Library/Application Support/EDOPro-HD-Sync
-- The tool tries YGOProDeck first for HD art, then falls back to ProjectIgnis.
-- Multi-art cards (e.g. Ring of Destruction, Rescue Cat) get distinct artwork
-  for each variant automatically.
-- You can also download curated textures (custom backgrounds & card sleeves):
-  answer "y" when the tool asks.
+- Everything happens in one small window: tick what you want (field art,
+  only your decks, textures, repair), press Start, and watch the progress.
+- Updates are automatic: when a new version is released, the launcher
+  installs it on the next run (verified against GitHub's published checksum).
+- Only missing artwork is downloaded, so repeat runs are fast. Tick
+  "Re-download everything" in the window for a full refresh.
+- "Show coverage" tells you how much artwork you have without downloading.
+- Rush Duel, anime, GOAT, Pre-Errata, and alternate artworks are all covered,
+  plus the playmat art for Field Spells.
 
 Quick sanity check
 ------------------
