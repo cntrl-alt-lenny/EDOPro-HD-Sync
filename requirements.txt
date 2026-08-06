@@ -1,5 +1,5 @@
 # Pinned to exact versions so release builds are reproducible.
 # To upgrade, bump a version here and rebuild — CI installs exactly these.
-aiohttp==3.14.0
+aiohttp==3.14.3
 rich==15.0.0
 certifi==2026.5.20
