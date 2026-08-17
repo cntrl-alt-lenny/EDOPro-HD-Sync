@@ -9,7 +9,6 @@ run_app raises GuiUnavailable and the caller falls back to the console flow.
 """
 
 import contextlib
-import ntpath
 import os
 import platform
 import queue
@@ -155,62 +154,6 @@ def _ui_fonts() -> dict:
         "big": (base, 26, "bold"),
         "button": (base, 10, "bold"),
     }
-
-
-def _hide_own_console_window() -> None:
-    """Hide the black console window behind the app on a Windows double-click.
-
-    The app is built as a console program on purpose, so `--health-check` and
-    the other flags still print when run from a terminal. That means a
-    double-click also gets a console window, which just sits there looking
-    broken behind the real window.
-
-    Only ever hide a console this app created itself: when it was launched
-    from an existing Command Prompt or Terminal, that window belongs to the
-    user and hiding it would take their shell away. The owner is identified
-    by its executable path, which is ours for a double-click (PyInstaller's
-    one-file bootloader owns the console and runs the same binary) and
-    cmd.exe / powershell.exe / WindowsTerminal.exe when it is not.
-    """
-    if sys.platform != "win32":
-        return
-
-    import ctypes
-    from ctypes import wintypes
-
-    with contextlib.suppress(Exception):
-        console = ctypes.windll.kernel32.GetConsoleWindow()
-        if not console:
-            return  # built windowed, or no console at all: nothing to hide
-
-        owner_pid = wintypes.DWORD()
-        ctypes.windll.user32.GetWindowThreadProcessId(console, ctypes.byref(owner_pid))
-
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        handle = ctypes.windll.kernel32.OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION, False, owner_pid
-        )
-        if not handle:
-            return
-        try:
-            size = wintypes.DWORD(32768)
-            buffer = ctypes.create_unicode_buffer(size.value)
-            if not ctypes.windll.kernel32.QueryFullProcessImageNameW(
-                handle, 0, buffer, ctypes.byref(size)
-            ):
-                return
-            owner_exe = buffer.value
-        finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
-
-        # ntpath, not os.path: this comparison is Windows-only and must be
-        # case-insensitive, which os.path.normcase is not when tests run on
-        # macOS or Linux.
-        if ntpath.normcase(owner_exe) != ntpath.normcase(sys.executable):
-            return  # the console is someone else's - leave it alone
-
-        SW_HIDE = 0
-        ctypes.windll.user32.ShowWindow(console, SW_HIDE)
 
 
 def _set_windows_dpi_awareness() -> None:
@@ -442,9 +385,6 @@ class _App:
             _apply_style(self.root)
             _apply_windows_dark_titlebar(self.root)
             self._set_app_icon()
-            # Only once Tk is definitely working: if the window had failed we
-            # fall back to the console flow, which needs its console.
-            _hide_own_console_window()
 
             self.shell = ttk.Frame(self.root)
             self.shell.grid(sticky="nsew")

@@ -2077,14 +2077,23 @@ async def run(cfg: Config):
 
 
 def should_pause_before_exit(cfg: Config | None, gui_ran: bool = False) -> bool:
-    """Keep the bundled Windows app open so double-click runs are readable.
+    """Keep a Windows console run open so the output stays readable.
 
-    Never after the window ran: it reports its own results, and its console is
-    hidden, so waiting for Enter there would hang the app out of sight.
+    Only ever when someone is actually there to press Enter. The Windows build
+    is a windowed app, so a double-click has no console at all: pausing then
+    would leave the app waiting forever on input nobody can see. A real
+    terminal has an interactive stdin; a double-click and a piped run do not.
     """
     if gui_ran:
         return False
-    return sys.platform == "win32" and getattr(sys, "frozen", False) and not (cfg and cfg.no_pause)
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return False
+    if cfg and cfg.no_pause:
+        return False
+    try:
+        return sys.stdin is not None and sys.stdin.isatty()
+    except (AttributeError, ValueError):
+        return False
 
 
 def pause_before_exit(cfg: Config | None, gui_ran: bool = False) -> None:

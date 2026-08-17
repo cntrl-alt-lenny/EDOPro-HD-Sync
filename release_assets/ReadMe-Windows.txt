@@ -24,8 +24,9 @@ wrong with it.
 
 Helpful notes
 -------------
-- The app takes a second or two to start. That is normal: it unpacks itself
-  each time so it can stay a single file.
+- The app takes a second or two to start, with nothing on screen while it
+  does. That is normal: it unpacks itself each time so it can stay a single
+  file.
 - Only missing artwork is downloaded, so repeat runs are quick. Tick
   "Re-download everything" for a full refresh.
 - "Only cards from my decks" is much faster on a fresh install - it grabs

@@ -61,10 +61,37 @@ jobs:
     # ReadMe. It costs ~1.5s of extraction per launch versus --onedir; that is
     # the price of not making people hunt for an app inside a folder of 1,000
     # support files, and this tool is run occasionally, not all day.
+    #
+    # --windowed on Windows ONLY. A console build puts a black console window
+    # behind the app on every double-click, which users reported as looking
+    # broken. Do not "fix" that at runtime by hiding the window: that was
+    # tried and it does not hold, because the console Explorer creates on a
+    # double-click is not the same beast as the pseudo-console a terminal
+    # hands you, so it cannot be tested from one. Not creating a console at
+    # all is the only version of this that cannot regress. Output still
+    # reaches a pipe or a terminal, which is what the smoke test below and
+    # `--health-check` rely on. On macOS --windowed would build a .app bundle
+    # instead of the single file the release needs, so it stays Windows-only.
     - name: Build with PyInstaller
       shell: bash
       run: |
-        pyinstaller --onefile --name EDOPro-HD-Sync --icon build/app-icon.ico --collect-data certifi --add-data "VERSION${{ matrix.os == 'windows-latest' && ';' || ':' }}." --add-data "assets/app-icon.png${{ matrix.os == 'windows-latest' && ';' || ':' }}." main.py
+        pyinstaller --onefile ${{ matrix.os == 'windows-latest' && '--windowed' || '' }} --name EDOPro-HD-Sync --icon build/app-icon.ico --collect-data certifi --add-data "VERSION${{ matrix.os == 'windows-latest' && ';' || ':' }}." --add-data "assets/app-icon.png${{ matrix.os == 'windows-latest' && ';' || ':' }}." main.py
+
+    # The PE subsystem byte is the difference between "double-click shows one
+    # clean window" and "double-click shows a stray black console too".
+    - name: Verify the Windows build creates no console
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: |
+        $bytes = [System.IO.File]::ReadAllBytes("dist/EDOPro-HD-Sync.exe")
+        $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+        $subsystem = [BitConverter]::ToUInt16($bytes, $peOffset + 0x5C)
+        # 2 = IMAGE_SUBSYSTEM_WINDOWS_GUI, 3 = IMAGE_SUBSYSTEM_WINDOWS_CUI
+        if ($subsystem -ne 2) {
+          Write-Host "::error::Windows build is a console app (subsystem $subsystem) - double-clicking it would open a stray console window."
+          exit 1
+        }
+        Write-Host "Windows build is a GUI app: no console window on double-click."
 
     - name: Smoke test packaged binary
       shell: bash
