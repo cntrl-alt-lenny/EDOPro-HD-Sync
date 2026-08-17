@@ -9,6 +9,7 @@ run_app raises GuiUnavailable and the caller falls back to the console flow.
 """
 
 import contextlib
+import ntpath
 import os
 import platform
 import queue
@@ -202,7 +203,10 @@ def _hide_own_console_window() -> None:
         finally:
             ctypes.windll.kernel32.CloseHandle(handle)
 
-        if os.path.normcase(owner_exe) != os.path.normcase(sys.executable):
+        # ntpath, not os.path: this comparison is Windows-only and must be
+        # case-insensitive, which os.path.normcase is not when tests run on
+        # macOS or Linux.
+        if ntpath.normcase(owner_exe) != ntpath.normcase(sys.executable):
             return  # the console is someone else's - leave it alone
 
         SW_HIDE = 0

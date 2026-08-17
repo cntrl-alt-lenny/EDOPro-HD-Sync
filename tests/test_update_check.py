@@ -38,10 +38,14 @@ class NotifyIfUpdateAvailableTests(unittest.TestCase):
 
         print_mock.assert_not_called()
 
-    def test_update_message_mentions_the_launcher_auto_update(self):
+    def test_update_message_points_at_the_releases_page(self):
         message = main._update_message("v9.9.9")
         self.assertIn("v9.9.9", message)
-        self.assertIn("launcher", message)
+        self.assertIn("releases/latest", message)
+        # Nothing updates itself any more; promising otherwise would strand
+        # users on an old version waiting for an update that never comes.
+        self.assertNotIn("launcher", message)
+        self.assertNotIn("automatic", message)
 
 
 if __name__ == "__main__":

@@ -154,8 +154,7 @@ def _update_message(latest: str) -> str:
     return (
         f"[yellow]A newer version ({latest}) is available — "
         "https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest\n"
-        "If you use the one-file launcher, it updates automatically on its next run; "
-        "otherwise grab the new version from the releases page.[/yellow]"
+        "Download it and replace this app with the new one.[/yellow]"
     )
 
 
