@@ -104,6 +104,26 @@ CHECKBOX_GROUPS = [
 CHECKBOXES = [box for _section, boxes in CHECKBOX_GROUPS for box in boxes]
 
 
+def _elide_path(path: str, limit: int = 36) -> str:
+    """Shorten a long path to its last few folders so the row stays one line.
+
+    Wrapping instead would widen the window and add a second line to every
+    screen, since all three share one size. The tail is the part that tells
+    you which folder this is, so that is what survives.
+    """
+    if len(path) <= limit:
+        return path
+    separator = "\\" if "\\" in path else "/"
+    parts = [part for part in path.split(separator) if part]
+    tail = parts[-1] if parts else path
+    for count in range(2, len(parts) + 1):
+        candidate = separator.join(parts[-count:])
+        if len(candidate) + 1 > limit:
+            break
+        tail = candidate
+    return f"…{separator}{tail}"
+
+
 class GuiUnavailable(RuntimeError):
     """The window can't be created (no tkinter, no display, broken Tk)."""
 
@@ -134,6 +154,59 @@ def _ui_fonts() -> dict:
         "big": (base, 26, "bold"),
         "button": (base, 10, "bold"),
     }
+
+
+def _hide_own_console_window() -> None:
+    """Hide the black console window behind the app on a Windows double-click.
+
+    The app is built as a console program on purpose, so `--health-check` and
+    the other flags still print when run from a terminal. That means a
+    double-click also gets a console window, which just sits there looking
+    broken behind the real window.
+
+    Only ever hide a console this app created itself: when it was launched
+    from an existing Command Prompt or Terminal, that window belongs to the
+    user and hiding it would take their shell away. The owner is identified
+    by its executable path, which is ours for a double-click (PyInstaller's
+    one-file bootloader owns the console and runs the same binary) and
+    cmd.exe / powershell.exe / WindowsTerminal.exe when it is not.
+    """
+    if sys.platform != "win32":
+        return
+
+    import ctypes
+    from ctypes import wintypes
+
+    with contextlib.suppress(Exception):
+        console = ctypes.windll.kernel32.GetConsoleWindow()
+        if not console:
+            return  # built windowed, or no console at all: nothing to hide
+
+        owner_pid = wintypes.DWORD()
+        ctypes.windll.user32.GetWindowThreadProcessId(console, ctypes.byref(owner_pid))
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, owner_pid
+        )
+        if not handle:
+            return
+        try:
+            size = wintypes.DWORD(32768)
+            buffer = ctypes.create_unicode_buffer(size.value)
+            if not ctypes.windll.kernel32.QueryFullProcessImageNameW(
+                handle, 0, buffer, ctypes.byref(size)
+            ):
+                return
+            owner_exe = buffer.value
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+
+        if os.path.normcase(owner_exe) != os.path.normcase(sys.executable):
+            return  # the console is someone else's - leave it alone
+
+        SW_HIDE = 0
+        ctypes.windll.user32.ShowWindow(console, SW_HIDE)
 
 
 def _set_windows_dpi_awareness() -> None:
@@ -365,6 +438,9 @@ class _App:
             _apply_style(self.root)
             _apply_windows_dark_titlebar(self.root)
             self._set_app_icon()
+            # Only once Tk is definitely working: if the window had failed we
+            # fall back to the console flow, which needs its console.
+            _hide_own_console_window()
 
             self.shell = ttk.Frame(self.root)
             self.shell.grid(sticky="nsew")
@@ -376,11 +452,9 @@ class _App:
             self._build_options()
             self._build_progress()
             self._build_summary()
+            # _show sizes the window to whichever screen is on top; CONTENT_WIDTH
+            # is the floor so it never ends up a tall, skinny strip.
             self._show(self.options_frame)
-            # Without a floor the window follows its narrowest screen and ends
-            # up a tall, skinny strip; this keeps a comfortable proportion.
-            self.root.update_idletasks()
-            self.root.minsize(CONTENT_WIDTH, self.root.winfo_reqheight())
 
             with contextlib.suppress(Exception):
                 self.root.attributes("-topmost", True)
@@ -445,31 +519,26 @@ class _App:
         accent = tk.Frame(f, background=GOLD, height=3, width=118)
         accent.grid(sticky="w", pady=(9, 0))
         accent.grid_propagate(False)
-        ttk.Label(f, text="Tick what you want, then press Start.", style="Status.TLabel").grid(
-            sticky="w", pady=(12, 18)
-        )
-
         # The folder is settled before anything runs: the app finds it, shows
-        # it here, and pressing Start is the confirmation.
-        ttk.Label(f, text="EDOPRO FOLDER", style="Section.TLabel").grid(sticky="w", pady=(0, 5))
-        folder_card = ttk.Frame(f, style="Card.TFrame", padding=(16, 11, 16, 11))
+        # it here, and pressing Start is the confirmation. One line, because
+        # every pixel this card takes is added to all three screens.
+        ttk.Label(f, text="EDOPRO FOLDER", style="Section.TLabel").grid(sticky="w", pady=(14, 5))
+        folder_card = ttk.Frame(f, style="Card.TFrame", padding=(16, 9, 12, 9))
         folder_card.grid(sticky="ew", pady=(0, 13))
         folder_card.columnconfigure(0, weight=1)
         self.folder_var = tk.StringVar()
         self.folder_hint_var = tk.StringVar()
-        ttk.Label(
-            folder_card,
-            textvariable=self.folder_var,
-            style="CardBody.TLabel",
-            wraplength=CONTENT_WIDTH - 130,
-            justify="left",
-        ).grid(row=0, column=0, sticky="w")
+        ttk.Label(folder_card, textvariable=self.folder_var, style="CardBody.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
         ttk.Button(
             folder_card, text="Change…", style="Secondary.TButton", command=self._on_change_folder
         ).grid(row=0, column=1, sticky="e", padx=(12, 0))
-        ttk.Label(folder_card, textvariable=self.folder_hint_var, style="Hint.TLabel").grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(4, 0)
+        # Only shown when something needs saying, so the happy path stays short.
+        self.folder_hint = ttk.Label(
+            folder_card, textvariable=self.folder_hint_var, style="Hint.TLabel"
         )
+        self.folder_hint.grid(row=1, column=0, columnspan=2, sticky="w", pady=(3, 0))
 
         self.variables: dict[str, tk.BooleanVar] = {}
         defaults = {"field_art": getattr(self.cfg, "field_art", True)}
@@ -513,18 +582,25 @@ class _App:
     def _render_folder(self) -> None:
         """Show the folder the sync will use, and gate Start on having one."""
         path = getattr(self.cfg, "edopro_path", "") or ""
+        hint = ""
         if config.folder_has_card_databases(path):
-            self.folder_var.set(path)
-            self.folder_hint_var.set("Found automatically — press Start to use it")
+            self.folder_var.set(_elide_path(path))
             self.start_button.state(["!disabled"])
         elif config.looks_like_edopro_folder(path):
-            self.folder_var.set(path)
-            self.folder_hint_var.set("No card databases here yet — open EDOPro once, then retry")
+            self.folder_var.set(_elide_path(path))
+            hint = "No card databases here yet — open EDOPro once, then run this again"
             self.start_button.state(["!disabled"])
         else:
             self.folder_var.set("Not found")
-            self.folder_hint_var.set("Press Change… and pick your ProjectIgnis folder")
+            hint = "Press Change… and pick your ProjectIgnis folder"
             self.start_button.state(["disabled"])
+
+        self.folder_hint_var.set(hint)
+        if hint:
+            self.folder_hint.grid()
+        else:
+            self.folder_hint.grid_remove()
+        self._fit_to_screen()
 
     def _ask_for_folder(self, initial: str) -> str | None:
         """Show the native folder dialog. Must run on the Tk (main) thread."""
@@ -622,9 +698,33 @@ class _App:
 
     # -- layout helpers ----------------------------------------------------
 
+    def _fit_to_screen(self) -> None:
+        """Size the window to the screen on top, not to the tallest of the three.
+
+        All three frames share one grid cell, so Tk asks for the tallest one's
+        height and the short screens (progress, summary) would otherwise sit in
+        a half-empty window.
+        """
+        if self.current is None:
+            return
+        with contextlib.suppress(Exception):
+            # Centered screens hand back their inner frame, so climb to the one
+            # actually gridded into the shell or the padding gets left out.
+            outer = self.current
+            while outer is not None and outer.master is not self.shell:
+                outer = outer.master
+            if outer is None:
+                return
+            self.root.update_idletasks()
+            width = max(self.shell.winfo_reqwidth(), CONTENT_WIDTH)
+            height = outer.winfo_reqheight()
+            self.root.minsize(width, height)
+            self.root.geometry(f"{width}x{height}")
+
     def _show(self, frame) -> None:
         self.current = frame
         frame.tkraise()
+        self._fit_to_screen()
         self.root.update_idletasks()
         width = max(self.root.winfo_width(), CONTENT_WIDTH)
         x = (self.root.winfo_screenwidth() - width) // 2

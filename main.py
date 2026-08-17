@@ -2077,14 +2077,20 @@ async def run(cfg: Config):
     return stats
 
 
-def should_pause_before_exit(cfg: Config | None) -> bool:
-    """Keep the bundled Windows app open so double-click runs are readable."""
+def should_pause_before_exit(cfg: Config | None, gui_ran: bool = False) -> bool:
+    """Keep the bundled Windows app open so double-click runs are readable.
+
+    Never after the window ran: it reports its own results, and its console is
+    hidden, so waiting for Enter there would hang the app out of sight.
+    """
+    if gui_ran:
+        return False
     return sys.platform == "win32" and getattr(sys, "frozen", False) and not (cfg and cfg.no_pause)
 
 
-def pause_before_exit(cfg: Config | None) -> None:
+def pause_before_exit(cfg: Config | None, gui_ran: bool = False) -> None:
     """Wait for Enter before closing when the packaged Windows app finishes."""
-    if not should_pause_before_exit(cfg):
+    if not should_pause_before_exit(cfg, gui_ran):
         return
     with contextlib.suppress(EOFError):
         input("\nPress Enter to close this window...")
@@ -2102,6 +2108,7 @@ def _extract_exit_code(code) -> int:
 def main() -> int:
     cfg: Config | None = None
     exit_code = 0
+    launched_gui = False
 
     try:
         cfg = Config()
@@ -2113,7 +2120,6 @@ def main() -> int:
             # pinned 3.11 build (aiohttp needs the selector loop on Windows).
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-        launched_gui = False
         if _should_show_gui(cfg) and gui.gui_available():
             try:
                 exit_code = gui.run_app(cfg, VERSION, run, _apply_gui_choices)
@@ -2134,7 +2140,7 @@ def main() -> int:
         else:
             raise
     finally:
-        pause_before_exit(cfg)
+        pause_before_exit(cfg, launched_gui)
 
     return exit_code
 
