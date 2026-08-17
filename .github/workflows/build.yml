@@ -71,63 +71,18 @@ jobs:
         fi
         "$binary" --health-check --quiet
 
-    - name: Check Windows signing configuration
+    # NOTE: Windows code signing intentionally lives OUTSIDE this job.
+    # GitHub downloads every action referenced by a job during "Set up job",
+    # even steps gated behind an `if:` that is false — so keeping an unused
+    # azure/trusted-signing-action here meant a codeload hiccup (429/503) could
+    # fail every Windows release for a feature that was never enabled. When
+    # signing is actually configured, add it as its OWN job guarded at the job
+    # level (`if: vars.TRUSTED_SIGNING_ACCOUNT_NAME != ''`) so a skipped job
+    # never fetches the action, passing the exe between jobs via artifacts.
+    - name: Note that the Windows build is unsigned
       if: matrix.os == 'windows-latest'
-      id: windows_signing
-      shell: pwsh
-      env:
-        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-        AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        TRUSTED_SIGNING_ACCOUNT_NAME: ${{ vars.TRUSTED_SIGNING_ACCOUNT_NAME }}
-        TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ vars.TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME }}
-        TRUSTED_SIGNING_ENDPOINT: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
-      run: |
-        $required = @{
-          "AZURE_CLIENT_ID" = $env:AZURE_CLIENT_ID
-          "AZURE_CLIENT_SECRET" = $env:AZURE_CLIENT_SECRET
-          "AZURE_TENANT_ID" = $env:AZURE_TENANT_ID
-          "TRUSTED_SIGNING_ACCOUNT_NAME" = $env:TRUSTED_SIGNING_ACCOUNT_NAME
-          "TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME" = $env:TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME
-          "TRUSTED_SIGNING_ENDPOINT" = $env:TRUSTED_SIGNING_ENDPOINT
-        }
-
-        $missing = @(
-          $required.GetEnumerator() |
-          Where-Object { [string]::IsNullOrWhiteSpace($_.Value) } |
-          ForEach-Object { $_.Key } |
-          Sort-Object
-        )
-
-        if ($missing.Count -gt 0) {
-          "enabled=false" >> $env:GITHUB_OUTPUT
-          Write-Warning "Windows signing is not configured. Missing: $($missing -join ', ')"
-        } else {
-          "enabled=true" >> $env:GITHUB_OUTPUT
-        }
-
-    - name: Warn when Windows release is unsigned
-      if: matrix.os == 'windows-latest' && steps.windows_signing.outputs.enabled != 'true'
       shell: bash
-      run: |
-        echo "::warning::Windows signing is not configured. Smart App Control may block this executable."
-        echo "::warning::Set repo secrets AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID and repo variables TRUSTED_SIGNING_ACCOUNT_NAME, TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME, TRUSTED_SIGNING_ENDPOINT."
-
-    - name: Sign Windows executable
-      if: matrix.os == 'windows-latest' && steps.windows_signing.outputs.enabled == 'true'
-      uses: azure/trusted-signing-action@v0.5.10
-      with:
-        azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-        azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        endpoint: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
-        signing-account-name: ${{ vars.TRUSTED_SIGNING_ACCOUNT_NAME }}
-        certificate-profile-name: ${{ vars.TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME }}
-        files-folder: ${{ github.workspace }}\dist\EDOPro-HD-Sync
-        files-folder-filter: exe
-        file-digest: SHA256
-        timestamp-rfc3161: http://timestamp.acs.microsoft.com
-        timestamp-digest: SHA256
+      run: echo "::warning::This Windows build is unsigned - SmartScreen may warn users. Configure Azure Trusted Signing to remove the warning."
 
     - name: Package (Windows)
       if: matrix.os == 'windows-latest'
