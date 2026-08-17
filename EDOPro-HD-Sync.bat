@@ -9,7 +9,8 @@ exit /b
 $ErrorActionPreference = 'Stop'
 $AppName = 'EDOPro-HD-Sync.exe'
 $SupportDir = Join-Path $env:LOCALAPPDATA 'EDOPro-HD-Sync'
-$Binary = Join-Path $SupportDir $AppName
+$AppDir = Join-Path $SupportDir 'app'
+$Binary = Join-Path $AppDir $AppName
 $InstalledFile = Join-Path $SupportDir 'binary_version.txt'
 $Api = 'https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest'
 $UA = 'EDOPro-HD-Sync-Launcher'
@@ -18,8 +19,9 @@ $UA = 'EDOPro-HD-Sync-Launcher'
 # work the same wherever this file ends up. The app shipped next to it (in
 # the extracted zip) is used to install without downloading anything.
 $SelfDir = Split-Path -Parent $env:HDSYNC_SELF
-$Bundled = Join-Path $SelfDir ('app\' + $AppName)
-$BundledVersionFile = Join-Path $SelfDir 'app\version.txt'
+$BundledDir = Join-Path $SelfDir 'app'
+$Bundled = Join-Path $BundledDir $AppName
+$BundledVersionFile = Join-Path $BundledDir 'version.txt'
 
 New-Item -ItemType Directory -Force -Path $SupportDir | Out-Null
 
@@ -29,6 +31,27 @@ $rel = $null
 try {
     $rel = Invoke-RestMethod -UseBasicParsing -UserAgent $UA -Uri $Api -TimeoutSec 15
 } catch { }
+
+function Swap-InAppDir {
+    # Replace the installed app folder, keeping the old copy until the swap
+    # succeeds so a failure can never leave a half-installed app.
+    param([string]$Source)
+    $backup = $AppDir + '.old'
+    try {
+        Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $AppDir) { Move-Item -LiteralPath $AppDir -Destination $backup -Force }
+        try {
+            Move-Item -LiteralPath $Source -Destination $AppDir -Force
+        } catch {
+            if (Test-Path -LiteralPath $backup) { Move-Item -LiteralPath $backup -Destination $AppDir -Force }
+            throw
+        }
+        Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+        return $true
+    } catch {
+        return $false
+    }
+}
 
 function Install-FromRelease {
     # Download + verify into a scratch folder; the existing app is replaced

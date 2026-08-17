@@ -60,12 +60,12 @@ jobs:
     - name: Build with PyInstaller
       shell: bash
       run: |
-        pyinstaller --onefile --name EDOPro-HD-Sync --icon build/app-icon.ico --collect-data certifi --add-data "VERSION${{ matrix.os == 'windows-latest' && ';' || ':' }}." --add-data "assets/app-icon.png${{ matrix.os == 'windows-latest' && ';' || ':' }}." main.py
+        pyinstaller --onedir --name EDOPro-HD-Sync --icon build/app-icon.ico --collect-data certifi --add-data "VERSION${{ matrix.os == 'windows-latest' && ';' || ':' }}." --add-data "assets/app-icon.png${{ matrix.os == 'windows-latest' && ';' || ':' }}." main.py
 
     - name: Smoke test packaged binary
       shell: bash
       run: |
-        binary="dist/EDOPro-HD-Sync"
+        binary="dist/EDOPro-HD-Sync/EDOPro-HD-Sync"
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
           binary="${binary}.exe"
         fi
@@ -123,7 +123,7 @@ jobs:
         endpoint: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
         signing-account-name: ${{ vars.TRUSTED_SIGNING_ACCOUNT_NAME }}
         certificate-profile-name: ${{ vars.TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME }}
-        files-folder: ${{ github.workspace }}\dist
+        files-folder: ${{ github.workspace }}\dist\EDOPro-HD-Sync
         files-folder-filter: exe
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
@@ -138,8 +138,8 @@ jobs:
         $archive = "dist/EDOPro-HD-Sync-Windows-v$version.zip"
         if (Test-Path $bundleDir) { Remove-Item $bundleDir -Recurse -Force }
         if (Test-Path $archive) { Remove-Item $archive -Force }
-        New-Item -ItemType Directory -Path "$bundleDir/app" | Out-Null
-        Copy-Item "dist/EDOPro-HD-Sync.exe" -Destination "$bundleDir/app/EDOPro-HD-Sync.exe"
+        New-Item -ItemType Directory -Path "$bundleDir" | Out-Null
+        Copy-Item "dist/EDOPro-HD-Sync" -Destination "$bundleDir/app" -Recurse
         Set-Content -LiteralPath "$bundleDir/app/version.txt" -Value "v$version" -NoNewline
         Copy-Item "EDOPro-HD-Sync.bat" -Destination "$bundleDir/EDOPro-HD-Sync.bat"
         Copy-Item "release_assets/ReadMe-Windows.txt" -Destination "$bundleDir/ReadMe.txt"
@@ -156,9 +156,10 @@ jobs:
         bundleDir="dist/EDOPro HD Sync"
 
         rm -rf "$bundleDir" "dist/$archive"
-        mkdir -p "$bundleDir/app"
+        mkdir -p "$bundleDir"
 
-        mv dist/EDOPro-HD-Sync "$bundleDir/app/EDOPro-HD-Sync-macOS"
+        mv dist/EDOPro-HD-Sync "$bundleDir/app"
+        mv "$bundleDir/app/EDOPro-HD-Sync" "$bundleDir/app/EDOPro-HD-Sync-macOS"
         chmod +x "$bundleDir/app/EDOPro-HD-Sync-macOS"
         printf 'v%s' "$version" > "$bundleDir/app/version.txt"
 
@@ -177,9 +178,10 @@ jobs:
         bundleDir="dist/EDOPro HD Sync"
 
         rm -rf "$bundleDir" "dist/$archive"
-        mkdir -p "$bundleDir/app"
+        mkdir -p "$bundleDir"
 
-        mv dist/EDOPro-HD-Sync "$bundleDir/app/EDOPro-HD-Sync-Linux"
+        mv dist/EDOPro-HD-Sync "$bundleDir/app"
+        mv "$bundleDir/app/EDOPro-HD-Sync" "$bundleDir/app/EDOPro-HD-Sync-Linux"
         chmod +x "$bundleDir/app/EDOPro-HD-Sync-Linux"
         printf 'v%s' "$version" > "$bundleDir/app/version.txt"
 

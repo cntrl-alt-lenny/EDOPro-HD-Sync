@@ -40,6 +40,7 @@ GREEN = "#6fcf97"
 RED = "#ef7d7d"
 FOCUS = "#7ea4e0"
 DISABLED = "#3a4059"
+CHECK_EDGE = "#42527a"  # unchecked box outline / secondary button border
 
 CONTENT_WIDTH = 460
 
@@ -127,6 +128,7 @@ def _ui_fonts() -> dict:
         "hint": (base, 9),
         "section": (base, 9, "bold"),
         "title": (base, 16, "bold"),
+        "hero": (base, 40, "bold"),
         "big": (base, 26, "bold"),
         "button": (base, 10, "bold"),
     }
@@ -212,31 +214,40 @@ def _apply_style(root) -> None:
     style.configure("Notice.TLabel", foreground=GOLD_DIM, font=f["hint"])
     style.configure("Good.TLabel", foreground=GREEN)
     style.configure("Bad.TLabel", foreground=RED)
+    style.configure("Hero.TLabel", font=f["hero"], foreground=GOLD_HI)
     style.configure("Big.TLabel", font=f["big"], foreground=GOLD_HI)
     style.configure("BigCalm.TLabel", font=f["big"], foreground=TEXT_FAINT)
     style.configure("BigBad.TLabel", font=f["big"], foreground=RED)
 
+    # clam draws an "x" glyph in a checked box and wraps it in a light 3D bevel,
+    # both of which look broken on a dark theme. Hiding the glyph (gold on gold)
+    # and flattening the bevel (upper/lowerbordercolor - NOT bordercolor, which
+    # this element ignores) leaves a clean filled square: gold = on, empty = off.
     style.configure(
         "Card.TCheckbutton",
         background=BG_CARD,
         foreground=TEXT,
         font=f["body"],
         indicatorbackground=BG,
-        indicatorforeground=ON_GOLD,
-        indicatormargin=(0, 2, 8, 2),
+        indicatorforeground=BG,
+        upperbordercolor=CHECK_EDGE,
+        lowerbordercolor=CHECK_EDGE,
+        indicatormargin=(0, 2, 10, 2),
         padding=(0, 2),
         focuscolor=FOCUS,
     )
     style.map(
         "Card.TCheckbutton",
         background=[("active", BG_CARD)],  # kill clam's light hover flash
-        foreground=[("disabled", TEXT_FAINT)],
+        foreground=[("disabled", TEXT_FAINT), ("active", GOLD_HI)],
         indicatorbackground=[
             ("disabled", BG_CHIP),
             ("selected", GOLD),
             ("pressed", BG_CHIP),
         ],
-        indicatorforeground=[("disabled", TEXT_FAINT), ("selected", ON_GOLD)],
+        indicatorforeground=[("disabled", BG_CHIP), ("selected", GOLD)],
+        upperbordercolor=[("selected", GOLD), ("active", GOLD_HI)],
+        lowerbordercolor=[("selected", GOLD), ("active", GOLD_HI)],
     )
 
     style.configure(
@@ -244,7 +255,9 @@ def _apply_style(root) -> None:
         background=GOLD,
         foreground=ON_GOLD,
         font=f["button"],
-        padding=(18, 8),
+        # Vertical padding must match Secondary.TButton exactly, or adjacent
+        # buttons render at different heights and the row looks misaligned.
+        padding=(20, 9),
         borderwidth=0,
         relief="flat",
         bordercolor=GOLD,
@@ -267,10 +280,12 @@ def _apply_style(root) -> None:
         background=BG,
         foreground=TEXT,
         font=f["body"],
-        padding=(14, 7),
+        padding=(20, 9),  # keep in sync with Primary.TButton
         borderwidth=1,
-        relief="flat",
-        bordercolor=BORDER,
+        # "solid" + a light-enough bordercolor: with relief=flat and BORDER the
+        # outline never rendered and the button looked like plain text.
+        relief="solid",
+        bordercolor=CHECK_EDGE,
         lightcolor=BG,
         darkcolor=BG,
         focusthickness=2,
@@ -331,6 +346,8 @@ class _App:
         self.folder_cancelled = False
         self.coverage_shown = False
         self.current = None  # which screen frame is on top (tkraise keeps all mapped)
+        self._screens: list = []
+        self._inner_of: dict = {}
         self.result: dict = {}
         self.cancel_event = threading.Event()
 
@@ -350,12 +367,18 @@ class _App:
             self.shell = ttk.Frame(self.root)
             self.shell.grid(sticky="nsew")
             self.root.columnconfigure(0, weight=1)
+            self.root.rowconfigure(0, weight=1)
             self.shell.columnconfigure(0, weight=1)
+            self.shell.rowconfigure(0, weight=1)
 
             self._build_options()
             self._build_progress()
             self._build_summary()
             self._show(self.options_frame)
+            # Without a floor the window follows its narrowest screen and ends
+            # up a tall, skinny strip; this keeps a comfortable proportion.
+            self.root.update_idletasks()
+            self.root.minsize(CONTENT_WIDTH, self.root.winfo_reqheight())
 
             with contextlib.suppress(Exception):
                 self.root.attributes("-topmost", True)
@@ -386,11 +409,24 @@ class _App:
 
     # -- screens ---------------------------------------------------------
 
-    def _screen(self) -> "ttk.Frame":
+    def _screen(self, center: bool = False) -> "ttk.Frame":
+        """A stacked screen. All three share one window size (the tallest one),
+        so the shorter screens center their content instead of clinging to the
+        top with a large void underneath.
+        """
         frame = ttk.Frame(self.shell, padding=(24, 20, 24, 22))
         frame.grid(row=0, column=0, sticky="nsew")
         frame.columnconfigure(0, weight=1)
-        return frame
+        self._screens.append(frame)
+        if not center:
+            return frame
+        frame.rowconfigure(0, weight=1)
+        frame.rowconfigure(2, weight=1)
+        inner = ttk.Frame(frame)
+        inner.grid(row=1, column=0, sticky="ew")
+        inner.columnconfigure(0, weight=1)
+        self._inner_of[frame] = inner
+        return inner
 
     def _build_options(self) -> None:
         f = self.options_frame = self._screen()
@@ -404,16 +440,19 @@ class _App:
         ttk.Label(header, text=f"v{self.version}", style="Chip.TLabel").grid(
             row=0, column=1, sticky="e"
         )
+        accent = tk.Frame(f, background=GOLD, height=3, width=118)
+        accent.grid(sticky="w", pady=(9, 0))
+        accent.grid_propagate(False)
         ttk.Label(f, text="Tick what you want, then press Start.", style="Status.TLabel").grid(
-            sticky="w", pady=(4, 18)
+            sticky="w", pady=(12, 18)
         )
 
         self.variables: dict[str, tk.BooleanVar] = {}
         defaults = {"field_art": getattr(self.cfg, "field_art", True)}
         for section, boxes in CHECKBOX_GROUPS:
-            ttk.Label(f, text=section, style="Section.TLabel").grid(sticky="w", pady=(0, 6))
-            card = ttk.Frame(f, style="Card.TFrame", padding=(14, 12, 14, 6))
-            card.grid(sticky="ew", pady=(0, 16))
+            ttk.Label(f, text=section, style="Section.TLabel").grid(sticky="w", pady=(0, 5))
+            card = ttk.Frame(f, style="Card.TFrame", padding=(16, 11, 16, 5))
+            card.grid(sticky="ew", pady=(0, 13))
             card.columnconfigure(0, weight=1)
             for key, label, hint, default in boxes:
                 self.variables[key] = tk.BooleanVar(value=bool(defaults.get(key, default)))
@@ -421,7 +460,7 @@ class _App:
                     card, text=label, style="Card.TCheckbutton", variable=self.variables[key]
                 ).grid(sticky="w")
                 ttk.Label(card, text=hint, style="Hint.TLabel").grid(
-                    sticky="w", padx=(26, 0), pady=(0, 10)
+                    sticky="w", padx=(28, 0), pady=(0, 8)
                 )
 
         self.notice_var = tk.StringVar(value="")
@@ -442,35 +481,46 @@ class _App:
         self.root.protocol("WM_DELETE_WINDOW", self._on_escape)
 
     def _build_progress(self) -> None:
-        f = self.progress_frame = self._screen()
-        ttk.Label(f, text="Syncing artwork", style="Title.TLabel").grid(sticky="w")
+        f = self._screen(center=True)
+        self.progress_frame = self._screens[-1]
+
+        # A big percentage anchors the screen: without it the sync state is a
+        # thin strip of widgets floating in a window sized for the options list.
+        self.pct_var = tk.StringVar(value="")
+        ttk.Label(f, textvariable=self.pct_var, style="Hero.TLabel", anchor="center").grid(
+            sticky="ew"
+        )
         self.stage_var = tk.StringVar(value="Scanning card databases…")
-        ttk.Label(f, textvariable=self.stage_var, style="Status.TLabel", width=58, anchor="w").grid(
-            sticky="w", pady=(12, 10)
+        ttk.Label(f, textvariable=self.stage_var, style="Status.TLabel", anchor="center").grid(
+            sticky="ew", pady=(2, 22)
         )
-        self.bar = ttk.Progressbar(
-            f, style="Gold.Horizontal.TProgressbar", mode="indeterminate", length=CONTENT_WIDTH - 48
-        )
+        self.bar = ttk.Progressbar(f, style="Gold.Horizontal.TProgressbar", mode="indeterminate")
         self.bar.grid(sticky="ew")
+
         counts = ttk.Frame(f)
-        counts.grid(sticky="ew", pady=(10, 16))
+        counts.grid(sticky="ew", pady=(12, 26))
         counts.columnconfigure(0, weight=1)
-        # Notices (e.g. "no decks found — syncing everything") share the same
-        # variable as the options screen so they're visible mid-sync too.
-        ttk.Label(counts, textvariable=self.notice_var, style="Notice.TLabel").grid(
-            row=0, column=0, sticky="w"
-        )
         self.count_var = tk.StringVar(value="")
         ttk.Label(counts, textvariable=self.count_var, style="Faint.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        self.remaining_var = tk.StringVar(value="")
+        ttk.Label(counts, textvariable=self.remaining_var, style="Faint.TLabel").grid(
             row=0, column=1, sticky="e"
+        )
+        # Notices (e.g. "no decks found — syncing everything") share the same
+        # variable as the options screen so they're visible mid-sync too.
+        ttk.Label(f, textvariable=self.notice_var, style="Notice.TLabel", anchor="center").grid(
+            sticky="ew", pady=(0, 14)
         )
         self.cancel_button = ttk.Button(
             f, text="Cancel", style="Secondary.TButton", command=self._on_cancel
         )
-        self.cancel_button.grid(sticky="e")
+        self.cancel_button.grid()
 
     def _build_summary(self) -> None:
-        f = self.summary_frame = self._screen()
+        f = self._screen(center=True)
+        self.summary_frame = self._screens[-1]
         self.summary_title_var = tk.StringVar(value="Sync complete")
         ttk.Label(f, textvariable=self.summary_title_var, style="Title.TLabel").grid(
             sticky="w", pady=(0, 16)
@@ -604,6 +654,13 @@ class _App:
 
     # -- event pump ----------------------------------------------------------
 
+    def _render_counts(self) -> None:
+        total = max(self.total, 1)
+        self.pct_var.set(f"{min(100 * self.done // total, 100)}%")
+        self.count_var.set(f"{self.done:,} of {self.total:,}")
+        left = max(self.total - self.done, 0)
+        self.remaining_var.set(f"{left:,} to go" if left else "finishing…")
+
     def _pump(self) -> None:
         try:
             while True:
@@ -623,11 +680,11 @@ class _App:
             self.stage_var.set(description)
             self.bar.stop()
             self.bar.configure(mode="determinate", maximum=max(self.total, 1), value=0)
-            self.count_var.set(f"0 of {self.total:,}")
+            self._render_counts()
         elif kind == "adv":
             self.done += int(event[2])
             self.bar.configure(value=self.done)
-            self.count_var.set(f"{self.done:,} of {self.total:,}")
+            self._render_counts()
         elif kind == "desc":
             text = str(event[2])
             self.stage_var.set(text if len(text) <= 56 else text[:55] + "…")

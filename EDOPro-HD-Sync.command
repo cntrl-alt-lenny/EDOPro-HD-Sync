@@ -15,8 +15,10 @@ REPO_API="https://api.github.com/repos/cntrl-alt-lenny/EDOPro-HD-Sync/releases/l
 
 # The launcher always runs the copy it manages here, so updates work the same
 # whether you kept the extracted folder or moved this file somewhere else.
-BINARY="$SUPPORT_DIR/$APP_NAME"
-BUNDLED="$SCRIPT_DIR/app/$APP_NAME"
+APP_DIR="$SUPPORT_DIR/app"
+BINARY="$APP_DIR/$APP_NAME"
+BUNDLED_DIR="$SCRIPT_DIR/app"
+BUNDLED="$BUNDLED_DIR/$APP_NAME"
 
 mkdir -p "$SUPPORT_DIR"
 
@@ -72,10 +74,9 @@ fetch_release_info() {
 # app is replaced only after every step succeeds, so a failed update can
 # never break a working install.
 install_from_release() {
-    local bin_dir new_dir actual
-    bin_dir="$(dirname "$BINARY")"
-    new_dir="$bin_dir/_new.$$"
-    rm -rf "$bin_dir"/_new.* 2>/dev/null  # sweep scratch dirs orphaned by interrupts
+    local new_dir actual src
+    new_dir="$SUPPORT_DIR/_new.$$"
+    rm -rf "$SUPPORT_DIR"/_new.* 2>/dev/null  # sweep scratch dirs orphaned by interrupts
     mkdir -p "$new_dir" || return 1
 
     if [ -z "$ZIP_URL" ]; then
@@ -99,16 +100,17 @@ install_from_release() {
         fi
     fi
 
-    if ! unzip -o -j "$new_dir/app.zip" "*/app/$APP_NAME" -d "$new_dir" >/dev/null; then
+    if ! unzip -q "$new_dir/app.zip" -d "$new_dir/x"; then
         echo "Unzip failed. The download may be corrupted."
         rm -rf "$new_dir"; return 1
     fi
-    if [ ! -f "$new_dir/$APP_NAME" ]; then
+    src="$(find "$new_dir/x" -maxdepth 2 -type d -name app 2>/dev/null | head -1)"
+    if [ -z "$src" ] || [ ! -x "$src/$APP_NAME" ]; then
         echo "Could not find the app inside the download."
         rm -rf "$new_dir"; return 1
     fi
-    chmod +x "$new_dir/$APP_NAME"
-    if ! mv -f "$new_dir/$APP_NAME" "$BINARY"; then
+    chmod +x "$src/$APP_NAME" 2>/dev/null
+    if ! swap_in_app_dir "$src"; then
         rm -rf "$new_dir"; return 1
     fi
     printf '%s\n' "$LATEST_TAG" > "$INSTALLED_FILE"
@@ -116,12 +118,33 @@ install_from_release() {
     return 0
 }
 
+# Replace the installed app folder with a new one, keeping the old copy until
+# the swap succeeds so a failure can never leave a half-installed app.
+swap_in_app_dir() {
+    local src="$1" backup="$APP_DIR.old.$$"
+    rm -rf "$APP_DIR".old.* 2>/dev/null
+    if [ -d "$APP_DIR" ] && ! mv "$APP_DIR" "$backup"; then
+        return 1
+    fi
+    if ! mv "$src" "$APP_DIR"; then
+        [ -d "$backup" ] && mv "$backup" "$APP_DIR"
+        return 1
+    fi
+    rm -rf "$backup"
+    return 0
+}
+
 # Install the app that shipped next to this launcher — no download needed.
 seed_from_bundle() {
-    cp "$BUNDLED" "$BINARY" || return 1
-    chmod +x "$BINARY"
-    if [ -f "$SCRIPT_DIR/app/version.txt" ]; then
-        cat "$SCRIPT_DIR/app/version.txt" > "$INSTALLED_FILE"
+    local staging="$SUPPORT_DIR/_seed.$$"
+    rm -rf "$SUPPORT_DIR"/_seed.* 2>/dev/null
+    cp -R "$BUNDLED_DIR" "$staging" || return 1
+    chmod +x "$staging/$APP_NAME" 2>/dev/null
+    if ! swap_in_app_dir "$staging"; then
+        rm -rf "$staging"; return 1
+    fi
+    if [ -f "$BUNDLED_DIR/version.txt" ]; then
+        cat "$BUNDLED_DIR/version.txt" > "$INSTALLED_FILE"
         printf '\n' >> "$INSTALLED_FILE"
     else
         : > "$INSTALLED_FILE"
