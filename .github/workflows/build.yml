@@ -14,6 +14,8 @@ jobs:
   build:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    outputs:
+      version: ${{ steps.release_version.outputs.value }}
     strategy:
       fail-fast: false
       matrix:
@@ -213,14 +215,51 @@ jobs:
           echo "path=dist/EDOPro-HD-Sync-Linux-v${version}.zip" >> "$GITHUB_OUTPUT"
         fi
 
+    - name: Hand the zip to the release job
+      uses: actions/upload-artifact@v4
+      with:
+        name: zip-${{ matrix.os }}
+        path: ${{ steps.release_file.outputs.path }}
+        if-no-files-found: error
+
+  # Publishing happens once, here, and never inside the matrix. Three parallel
+  # jobs each creating the same release raced on v5.2.0: two won, macOS died
+  # with "Too many retries" and its zip never got attached, and the release
+  # notes were generated twice. One job, one release, all three zips.
+  release:
+    name: Publish the release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+    - name: Collect every platform's zip
+      uses: actions/download-artifact@v4
+      with:
+        path: dist
+        pattern: zip-*
+        merge-multiple: true
+
     # Exactly one asset per platform: Windows, macOS, Linux. Downloads are
     # verified against the SHA-256 digest GitHub publishes in its release API,
     # so no separate .sha256 files are needed.
+    - name: Check all three platforms are present before publishing
+      shell: bash
+      run: |
+        version="${{ needs.build.outputs.version }}"
+        missing=0
+        for platform in Windows macOS Linux; do
+          if [ ! -f "dist/EDOPro-HD-Sync-${platform}-v${version}.zip" ]; then
+            echo "::error::Missing the ${platform} download - refusing to publish a partial release."
+            missing=1
+          fi
+        done
+        ls -la dist
+        exit "$missing"
+
     - name: Release
       uses: softprops/action-gh-release@v2
-      if: startsWith(github.ref, 'refs/tags/')
       with:
-        name: EDOPro HD Sync v${{ steps.release_version.outputs.value }}
+        name: EDOPro HD Sync v${{ needs.build.outputs.version }}
         generate_release_notes: true
         fail_on_unmatched_files: true
-        files: ${{ steps.release_file.outputs.path }}
+        files: dist/*.zip
