@@ -27,7 +27,7 @@ import aiohttp
 import certifi
 
 import gui
-from config import BUILTIN_MANUAL_MAP, DEFAULTS, Config
+from config import BUILTIN_MANUAL_MAP, DEFAULTS, Config, find_edopro_folder
 
 try:
     import tkinter as tk
@@ -356,6 +356,32 @@ def read_edopro_path_from_console() -> str | None:
     if not entered:
         return None
     return normalize_edopro_path(entered)
+
+
+def detect_edopro_folder(cfg: Config) -> None:
+    """Find the EDOPro folder up front so it can be confirmed before any work.
+
+    Skipped when --edopro-path names a folder explicitly: the user has already
+    said where it is, so there is nothing to look for and nothing to confirm.
+    """
+    if cfg.cli.edopro_path is not None:
+        return
+    found = find_edopro_folder([cfg.edopro_path])
+    if found:
+        cfg.set_edopro_path(found)
+        cfg.folder_detected = True
+
+
+def confirm_edopro_folder(cfg: Config) -> bool:
+    """Show the folder that was found and let the user accept or change it.
+
+    Returns False only when the user backs out entirely.
+    """
+    console.print(f"[green]Found your EDOPro folder:[/green] [bold]{cfg.edopro_path}[/bold]")
+    if _prompt_yes_no("Use this folder?", default=True):
+        cfg.set_edopro_path(cfg.edopro_path, save=True)
+        return True
+    return prompt_for_edopro_path(cfg) is not None
 
 
 def prompt_for_edopro_path(cfg: Config) -> list[str] | None:
@@ -1628,6 +1654,16 @@ async def run(cfg: Config):
             raise SystemExit(1)
         return None
 
+    # The window already shows the folder (Start is the confirmation), so this
+    # only runs for console launches.
+    if (
+        cfg.folder_detected
+        and cfg.interactive_prompts
+        and not cfg.quiet
+        and not confirm_edopro_folder(cfg)
+    ):
+        return None
+
     dbs = get_db_files(cfg.edopro_path)
     if not dbs:
         dbs = prompt_for_edopro_path(cfg)
@@ -2069,6 +2105,8 @@ def main() -> int:
 
     try:
         cfg = Config()
+        if not cfg.health_check:
+            detect_edopro_folder(cfg)
 
         if sys.platform == "win32":
             # Deprecated as of Python 3.14 — revisit when bumping past the

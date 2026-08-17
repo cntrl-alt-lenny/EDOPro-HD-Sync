@@ -26,18 +26,20 @@
 
 ## Download
 
-One download per platform on the [Releases page](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) — no install, no Python, no setup.
+One download per platform on the [Releases page](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest). Every zip holds **one file and a ReadMe** — no install, no Python, no setup, nothing left behind on your machine.
 
 | Platform | Download | Then |
 |---|---|---|
-| **Windows** | [`EDOPro-HD-Sync-Windows.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, double-click **EDOPro-HD-Sync.bat**. If SmartScreen warns, choose **More info → Run anyway**. |
-| **macOS** | [`EDOPro-HD-Sync-macOS.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, double-click **EDOPro-HD-Sync.command** (the first time: **right-click → Open**). |
-| **Linux** | [`EDOPro-HD-Sync-Linux.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, run **./EDOPro-HD-Sync.sh** (or double-click and choose *Run*). |
+| **Windows** | [`EDOPro-HD-Sync-Windows.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, double-click **EDOPro-HD-Sync.exe**. If SmartScreen warns, choose **More info → Run anyway**. |
+| **macOS** | [`EDOPro-HD-Sync-macOS.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, double-click **EDOPro-HD-Sync** (the first time: **right-click → Open**). |
+| **Linux** | [`EDOPro-HD-Sync-Linux.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, double-click **EDOPro-HD-Sync** (or run `./EDOPro-HD-Sync`). |
 
-Pick your ProjectIgnis folder the first time and it's remembered from then on. The app installs itself from the download and **keeps itself up to date automatically**, verifying every update against GitHub's published checksum.
+**It finds your EDOPro folder for you.** The window opens showing the folder it found — press Start to use it, or **Change…** to pick a different one. If nothing turns up, you're asked to choose it straight away.
 
 ## Features
 
+- **One file, nothing to install** — the download is a single app plus a ReadMe. Put it anywhere, delete it when you're done, and nothing is left behind.
+- **Finds your EDOPro folder** — it checks the usual install locations and shows you what it found; you just confirm it.
 - **One simple window** — tick what you want, press Start, and watch the live progress and results right in the window. Same experience on Windows, macOS, and Linux.
 - **Every card type covered** — official, Rush Duel, and anime/custom cards are all fetched directly by the same IDs EDOPro uses.
 - **Field Spell playmat art** — the cropped artwork EDOPro displays on the board is downloaded into `pics/field/` automatically.
@@ -45,11 +47,12 @@ Pick your ProjectIgnis folder the first time and it's remembered from then on. T
 - **Coverage at a glance** — the *Show coverage* button (or `--stats`) tells you how complete your artwork is without downloading a thing.
 - **Repair mode** — tick *Repair broken images* (or use `--repair`) to find and re-fetch corrupt or half-downloaded files.
 - **Curated textures** — optionally grab a hand-picked set of backgrounds and card sleeves.
-- **Automatic updates** — new versions install themselves the next time you run it, verified against GitHub's published checksum.
+- **Update notices** — it tells you when a newer version is out; download it and replace the one file.
 - **Safe and resumable** — verified downloads, a 14-day failure cache so known-missing cards aren't hammered, and optional timestamped sync reports.
 
 ## How it works
 
+0. **Find** — looks for your EDOPro folder in the places it's normally installed, then shows it for you to confirm.
 1. **Scan** — reads every `.cdb` card database in your EDOPro folder (root, `expansions/`, and repository deltas).
 2. **Diff** — compares the card list against the images already in `pics/` and only queues what's missing.
 3. **Fetch** — 50 async workers try each card on [YGOProDeck](https://ygoprodeck.com), with a waterfall for tricky cases: manual overrides, GOAT / Pre-Errata suffix matching, an ID-offset fallback, and ProjectIgnis's own image server as the final backup (so even brand-new Rush Duel sets download).

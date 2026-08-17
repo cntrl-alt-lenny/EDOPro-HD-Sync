@@ -1,5 +1,2 @@
-# Keep Windows batch files CRLF so cmd.exe parses them correctly.
-*.bat text eol=crlf
-# Keep shell launchers LF.
-*.sh text eol=lf
-*.command text eol=lf
+# The release ReadMe is opened in Notepad on Windows, so keep it CRLF.
+release_assets/ReadMe-Windows.txt text eol=crlf

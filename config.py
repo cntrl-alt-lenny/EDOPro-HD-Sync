@@ -8,9 +8,11 @@ Loads settings from (in priority order):
 """
 
 import argparse
+import contextlib
 import json
 import os
 import sys
+import time
 
 BUILTIN_MANUAL_MAP: dict[str, str] = {
     # When multiple suffix variants (GOAT / Pre-Errata) share the same base name,
@@ -134,8 +136,39 @@ def save_edopro_path(path: str, edopro_path: str) -> bool:
     return True
 
 
-def _looks_like_edopro_folder(path: str) -> bool:
-    """Return True when a folder appears to be an EDOPro installation."""
+def folder_has_card_databases(path: str) -> bool:
+    """Return True when a folder holds card databases the sync can actually read.
+
+    This mirrors main.get_db_files() exactly. Keep the two in step: if
+    get_db_files() would come back empty, this has to say no, or the app would
+    happily "find" a folder it then cannot sync.
+    """
+    if not path or not os.path.isdir(path):
+        return False
+    if os.path.isfile(os.path.join(path, "cards.cdb")):
+        return True
+
+    expansions = os.path.join(path, "expansions")
+    if os.path.isdir(expansions):
+        with contextlib.suppress(OSError):
+            if any(name.endswith(".cdb") for name in os.listdir(expansions)):
+                return True
+
+    repositories = os.path.join(path, "repositories")
+    if os.path.isdir(repositories):
+        for _root, _dirs, filenames in os.walk(repositories):
+            if any(name.endswith(".delta.cdb") for name in filenames):
+                return True
+    return False
+
+
+def looks_like_edopro_folder(path: str) -> bool:
+    """Return True when a folder appears to be an EDOPro installation.
+
+    Deliberately looser than folder_has_card_databases: a freshly installed
+    EDOPro has EDOPro.exe but has not downloaded any card databases yet, and
+    that folder is still the right answer.
+    """
     if not path or not os.path.isdir(path):
         return False
     return any(
@@ -148,14 +181,122 @@ def _looks_like_edopro_folder(path: str) -> bool:
     )
 
 
+def _edopro_folder_score(path: str) -> int:
+    """Rank a candidate: 2 = ready to sync, 1 = EDOPro but no databases yet."""
+    if folder_has_card_databases(path):
+        return 2
+    if looks_like_edopro_folder(path):
+        return 1
+    return 0
+
+
 def _detect_packaged_edopro_path(config_path: str) -> str | None:
     """Guess the EDOPro folder for packaged builds living inside the game folder."""
     tool_dir = os.path.dirname(os.path.abspath(config_path))
     candidates = [tool_dir, os.path.dirname(tool_dir)]
     for candidate in candidates:
-        if _looks_like_edopro_folder(candidate):
+        if looks_like_edopro_folder(candidate):
             return candidate
     return None
+
+
+# Folder names EDOPro installers actually use, and the places people put them.
+EDOPRO_FOLDER_NAMES = (
+    "ProjectIgnis",
+    "EDOPro",
+    "ProjectIgnis-EDOPro",
+    "EDOPro-ProjectIgnis",
+    "projectignis",
+    "edopro",
+)
+
+# A wide scan must never make the app feel like it hung on startup.
+_SEARCH_TIME_BUDGET_SECONDS = 3.0
+
+
+def _search_parents() -> list[str]:
+    """Folders worth looking inside for an EDOPro installation."""
+    home = os.path.expanduser("~")
+    parents = [
+        home,
+        os.path.join(home, "Games"),
+        os.path.join(home, "Desktop"),
+        os.path.join(home, "Downloads"),
+        os.path.join(home, "Documents"),
+        os.path.join(home, "Applications"),
+    ]
+
+    if sys.platform == "win32":
+        for variable in ("LOCALAPPDATA", "APPDATA", "ProgramFiles", "ProgramFiles(x86)"):
+            value = os.environ.get(variable)
+            if value:
+                parents.extend((value, os.path.join(value, "Programs")))
+    elif sys.platform == "darwin":
+        parents.append("/Applications")
+    else:
+        parents.extend(
+            (
+                os.path.join(home, ".local", "share"),
+                os.path.join(home, ".steam", "steam", "steamapps", "common"),
+                "/opt",
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for parent in parents:
+        key = os.path.normcase(os.path.abspath(parent))
+        if key not in seen:
+            seen.add(key)
+            unique.append(parent)
+    return unique
+
+
+def find_edopro_folder(first_guesses: list[str] | None = None) -> str | None:
+    """Look for the user's EDOPro folder, best match first.
+
+    Checks the caller's own guesses, then the exact folder names EDOPro
+    installs under, then one level inside each likely parent. A folder with
+    card databases always wins over one that merely looks like EDOPro.
+    """
+    deadline = time.monotonic() + _SEARCH_TIME_BUDGET_SECONDS
+    best: str | None = None
+    best_score = 0
+
+    def consider(candidate: str) -> bool:
+        """Record a candidate; return True once a perfect match is found."""
+        nonlocal best, best_score
+        score = _edopro_folder_score(candidate)
+        if score > best_score:
+            best_score = score
+            best = os.path.abspath(candidate)
+        return best_score == 2
+
+    for guess in first_guesses or []:
+        if guess and consider(guess):
+            return best
+
+    parents = _search_parents()
+    for parent in parents:
+        for name in EDOPRO_FOLDER_NAMES:
+            if consider(os.path.join(parent, name)):
+                return best
+
+    # Nothing sat at a predictable name, so glance one level into each parent.
+    for parent in parents:
+        if time.monotonic() > deadline:
+            break
+        try:
+            entries = sorted(os.scandir(parent), key=lambda entry: entry.name)
+        except OSError:
+            continue
+        for entry in entries:
+            if time.monotonic() > deadline:
+                break
+            with contextlib.suppress(OSError):
+                if entry.is_dir() and consider(entry.path):
+                    return best
+    return best
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -418,6 +559,9 @@ class Config:
         self.gui: bool | None = self.cli.gui
         # Console questions are skipped when the options window already ran.
         self.interactive_prompts: bool = True
+        # Set when the EDOPro folder was found for the user rather than given,
+        # which is what makes it worth confirming before the sync starts.
+        self.folder_detected: bool = False
         # Runtime hooks installed by the options window (never set via CLI/file):
         self.gui_progress = None  # Rich-Progress-compatible adapter for the window
         self.folder_picker = None  # callable(initial_dir) -> chosen path or None

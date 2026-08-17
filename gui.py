@@ -15,6 +15,8 @@ import queue
 import sys
 import threading
 
+import config
+
 try:
     import tkinter as tk
     from tkinter import filedialog, ttk
@@ -447,6 +449,28 @@ class _App:
             sticky="w", pady=(12, 18)
         )
 
+        # The folder is settled before anything runs: the app finds it, shows
+        # it here, and pressing Start is the confirmation.
+        ttk.Label(f, text="EDOPRO FOLDER", style="Section.TLabel").grid(sticky="w", pady=(0, 5))
+        folder_card = ttk.Frame(f, style="Card.TFrame", padding=(16, 11, 16, 11))
+        folder_card.grid(sticky="ew", pady=(0, 13))
+        folder_card.columnconfigure(0, weight=1)
+        self.folder_var = tk.StringVar()
+        self.folder_hint_var = tk.StringVar()
+        ttk.Label(
+            folder_card,
+            textvariable=self.folder_var,
+            style="CardBody.TLabel",
+            wraplength=CONTENT_WIDTH - 130,
+            justify="left",
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Button(
+            folder_card, text="Change…", style="Secondary.TButton", command=self._on_change_folder
+        ).grid(row=0, column=1, sticky="e", padx=(12, 0))
+        ttk.Label(folder_card, textvariable=self.folder_hint_var, style="Hint.TLabel").grid(
+            row=1, column=0, columnspan=2, sticky="w", pady=(4, 0)
+        )
+
         self.variables: dict[str, tk.BooleanVar] = {}
         defaults = {"field_art": getattr(self.cfg, "field_art", True)}
         for section, boxes in CHECKBOX_GROUPS:
@@ -473,12 +497,55 @@ class _App:
         ttk.Button(
             buttons, text="Show coverage", style="Secondary.TButton", command=self._on_coverage
         ).grid(row=0, column=0, padx=(0, 10))
-        start = ttk.Button(buttons, text="Start", style="Primary.TButton", command=self._on_start)
-        start.grid(row=0, column=1)
+        self.start_button = ttk.Button(
+            buttons, text="Start", style="Primary.TButton", command=self._on_start
+        )
+        self.start_button.grid(row=0, column=1)
+
+        self._render_folder()
 
         self.root.bind("<Return>", lambda _e: self._on_start())
         self.root.bind("<Escape>", lambda _e: self._on_escape())
         self.root.protocol("WM_DELETE_WINDOW", self._on_escape)
+
+    # -- EDOPro folder -------------------------------------------------------
+
+    def _render_folder(self) -> None:
+        """Show the folder the sync will use, and gate Start on having one."""
+        path = getattr(self.cfg, "edopro_path", "") or ""
+        if config.folder_has_card_databases(path):
+            self.folder_var.set(path)
+            self.folder_hint_var.set("Found automatically — press Start to use it")
+            self.start_button.state(["!disabled"])
+        elif config.looks_like_edopro_folder(path):
+            self.folder_var.set(path)
+            self.folder_hint_var.set("No card databases here yet — open EDOPro once, then retry")
+            self.start_button.state(["!disabled"])
+        else:
+            self.folder_var.set("Not found")
+            self.folder_hint_var.set("Press Change… and pick your ProjectIgnis folder")
+            self.start_button.state(["disabled"])
+
+    def _ask_for_folder(self, initial: str) -> str | None:
+        """Show the native folder dialog. Must run on the Tk (main) thread."""
+        with contextlib.suppress(Exception):
+            return (
+                filedialog.askdirectory(
+                    parent=self.root,
+                    initialdir=initial or "~",
+                    title="Select your ProjectIgnis (EDOPro) folder",
+                    mustexist=True,
+                )
+                or None
+            )
+        return None
+
+    def _on_change_folder(self) -> None:
+        picked = self._ask_for_folder(getattr(self.cfg, "edopro_path", ""))
+        if not picked:
+            return
+        self.cfg.set_edopro_path(picked, save=True)
+        self._render_folder()
 
     def _build_progress(self) -> None:
         f = self._screen(center=True)

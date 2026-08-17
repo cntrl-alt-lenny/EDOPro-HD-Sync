@@ -57,15 +57,19 @@ jobs:
       shell: bash
       run: python tools/build_icon.py
 
+    # --onefile, so the download unzips to exactly one runnable file plus the
+    # ReadMe. It costs ~1.5s of extraction per launch versus --onedir; that is
+    # the price of not making people hunt for an app inside a folder of 1,000
+    # support files, and this tool is run occasionally, not all day.
     - name: Build with PyInstaller
       shell: bash
       run: |
-        pyinstaller --onedir --name EDOPro-HD-Sync --icon build/app-icon.ico --collect-data certifi --add-data "VERSION${{ matrix.os == 'windows-latest' && ';' || ':' }}." --add-data "assets/app-icon.png${{ matrix.os == 'windows-latest' && ';' || ':' }}." main.py
+        pyinstaller --onefile --name EDOPro-HD-Sync --icon build/app-icon.ico --collect-data certifi --add-data "VERSION${{ matrix.os == 'windows-latest' && ';' || ':' }}." --add-data "assets/app-icon.png${{ matrix.os == 'windows-latest' && ';' || ':' }}." main.py
 
     - name: Smoke test packaged binary
       shell: bash
       run: |
-        binary="dist/EDOPro-HD-Sync/EDOPro-HD-Sync"
+        binary="dist/EDOPro-HD-Sync"
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
           binary="${binary}.exe"
         fi
@@ -84,6 +88,8 @@ jobs:
       shell: bash
       run: echo "::warning::This Windows build is unsigned - SmartScreen may warn users. Configure Azure Trusted Signing to remove the warning."
 
+    # Every zip holds exactly two things: the app and a ReadMe. Nothing to
+    # install, nothing to dig through.
     - name: Package (Windows)
       if: matrix.os == 'windows-latest'
       shell: pwsh
@@ -94,14 +100,12 @@ jobs:
         if (Test-Path $bundleDir) { Remove-Item $bundleDir -Recurse -Force }
         if (Test-Path $archive) { Remove-Item $archive -Force }
         New-Item -ItemType Directory -Path "$bundleDir" | Out-Null
-        Copy-Item "dist/EDOPro-HD-Sync" -Destination "$bundleDir/app" -Recurse
-        Set-Content -LiteralPath "$bundleDir/app/version.txt" -Value "v$version" -NoNewline
-        Copy-Item "EDOPro-HD-Sync.bat" -Destination "$bundleDir/EDOPro-HD-Sync.bat"
+        Move-Item "dist/EDOPro-HD-Sync.exe" -Destination "$bundleDir/EDOPro-HD-Sync.exe"
         Copy-Item "release_assets/ReadMe-Windows.txt" -Destination "$bundleDir/ReadMe.txt"
         Compress-Archive -Path $bundleDir -DestinationPath $archive -Force
 
     # zip (unlike a raw browser download) preserves the executable bit, which is
-    # why the launcher ships inside an archive rather than as a bare file.
+    # why the app ships inside an archive rather than as a bare file.
     - name: Package (macOS)
       if: matrix.os == 'macos-latest'
       shell: bash
@@ -113,13 +117,8 @@ jobs:
         rm -rf "$bundleDir" "dist/$archive"
         mkdir -p "$bundleDir"
 
-        mv dist/EDOPro-HD-Sync "$bundleDir/app"
-        mv "$bundleDir/app/EDOPro-HD-Sync" "$bundleDir/app/EDOPro-HD-Sync-macOS"
-        chmod +x "$bundleDir/app/EDOPro-HD-Sync-macOS"
-        printf 'v%s' "$version" > "$bundleDir/app/version.txt"
-
-        cp EDOPro-HD-Sync.command "$bundleDir/EDOPro-HD-Sync.command"
-        chmod +x "$bundleDir/EDOPro-HD-Sync.command"
+        mv dist/EDOPro-HD-Sync "$bundleDir/EDOPro-HD-Sync"
+        chmod +x "$bundleDir/EDOPro-HD-Sync"
         cp release_assets/ReadMe-MacOS.txt "$bundleDir/ReadMe.txt"
 
         cd dist && zip -r "$archive" "EDOPro HD Sync"
@@ -135,33 +134,44 @@ jobs:
         rm -rf "$bundleDir" "dist/$archive"
         mkdir -p "$bundleDir"
 
-        mv dist/EDOPro-HD-Sync "$bundleDir/app"
-        mv "$bundleDir/app/EDOPro-HD-Sync" "$bundleDir/app/EDOPro-HD-Sync-Linux"
-        chmod +x "$bundleDir/app/EDOPro-HD-Sync-Linux"
-        printf 'v%s' "$version" > "$bundleDir/app/version.txt"
-
-        cp EDOPro-HD-Sync.sh "$bundleDir/EDOPro-HD-Sync.sh"
-        chmod +x "$bundleDir/EDOPro-HD-Sync.sh"
+        mv dist/EDOPro-HD-Sync "$bundleDir/EDOPro-HD-Sync"
+        chmod +x "$bundleDir/EDOPro-HD-Sync"
         cp release_assets/ReadMe-Linux.txt "$bundleDir/ReadMe.txt"
 
         cd dist && zip -r "$archive" "EDOPro HD Sync"
 
-    - name: Verify the launcher kept its executable bit
-      if: matrix.os != 'windows-latest'
+    # The whole promise of the download is "unzip, double-click". Fail the
+    # build if a zip ever grows a third entry or loses its executable bit.
+    - name: Verify the zip is just the app and a ReadMe
       shell: bash
       run: |
         version="${{ steps.release_version.outputs.value }}"
         case "${{ matrix.os }}" in
-          macos-latest) archive="dist/EDOPro-HD-Sync-macOS-v${version}.zip"; launcher="EDOPro HD Sync/EDOPro-HD-Sync.command" ;;
-          *)            archive="dist/EDOPro-HD-Sync-Linux-v${version}.zip"; launcher="EDOPro HD Sync/EDOPro-HD-Sync.sh" ;;
+          windows-latest) archive="dist/EDOPro-HD-Sync-Windows-v${version}.zip"; app="EDOPro HD Sync/EDOPro-HD-Sync.exe" ;;
+          macos-latest)   archive="dist/EDOPro-HD-Sync-macOS-v${version}.zip";   app="EDOPro HD Sync/EDOPro-HD-Sync" ;;
+          *)              archive="dist/EDOPro-HD-Sync-Linux-v${version}.zip";   app="EDOPro HD Sync/EDOPro-HD-Sync" ;;
         esac
+
         rm -rf dist/_verify && mkdir -p dist/_verify
         unzip -q "$archive" -d dist/_verify
-        if [ ! -x "dist/_verify/$launcher" ]; then
-          echo "::error::Launcher is not executable inside the release zip - users would get a permissions error."
+
+        files="$(cd dist/_verify && find . -type f | sort)"
+        count="$(printf '%s\n' "$files" | wc -l | tr -d ' ')"
+        if [ "$count" != "2" ]; then
+          echo "::error::Expected 2 files in the zip (the app and ReadMe.txt), found ${count}:"
+          printf '%s\n' "$files"
           exit 1
         fi
-        echo "Launcher is executable inside the zip."
+        if [ ! -f "dist/_verify/$app" ] || [ ! -f "dist/_verify/EDOPro HD Sync/ReadMe.txt" ]; then
+          echo "::error::The zip does not contain the app and ReadMe.txt at the top level:"
+          printf '%s\n' "$files"
+          exit 1
+        fi
+        if [ "${{ matrix.os }}" != "windows-latest" ] && [ ! -x "dist/_verify/$app" ]; then
+          echo "::error::The app is not executable inside the zip - users would get a permissions error."
+          exit 1
+        fi
+        echo "Zip contains exactly the app and ReadMe.txt."
 
     - name: Determine release file
       id: release_file
