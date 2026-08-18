@@ -31,7 +31,7 @@ One download per platform on the [Releases page](https://github.com/cntrl-alt-le
 | Platform | Download | Then |
 |---|---|---|
 | **Windows** | [`EDOPro-HD-Sync-Windows.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, double-click **EDOPro-HD-Sync.exe**. If SmartScreen warns, choose **More info → Run anyway**. |
-| **macOS** | [`EDOPro-HD-Sync-macOS.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, double-click **EDOPro-HD-Sync** (the first time: **right-click → Open**). |
+| **macOS** | [`EDOPro-HD-Sync-macOS.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, double-click **EDOPro HD Sync** (the first time: **right-click → Open**). |
 | **Linux** | [`EDOPro-HD-Sync-Linux.zip`](https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases/latest) | Unzip, double-click **EDOPro-HD-Sync** (or run `./EDOPro-HD-Sync`). |
 
 **It finds your EDOPro folder for you.** The window opens showing the folder it found — press Start to use it, or **Change…** to pick a different one. If nothing turns up, you're asked to choose it straight away.

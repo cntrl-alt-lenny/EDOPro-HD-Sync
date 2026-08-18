@@ -74,10 +74,30 @@ jobs:
     # reaches a pipe or a terminal, which is what the smoke test below and
     # `--health-check` rely on. On macOS --windowed would build a .app bundle
     # instead of the single file the release needs, so it stays Windows-only.
+    # --windowed does two different jobs. On Windows it builds a GUI subsystem
+    # exe so no console window appears. On macOS it wraps the same one-file
+    # binary in a .app bundle - the only way a double-click opens the app
+    # instead of a Terminal window running a Unix executable.
     - name: Build with PyInstaller
       shell: bash
       run: |
-        pyinstaller --onefile ${{ matrix.os == 'windows-latest' && '--windowed' || '' }} --name EDOPro-HD-Sync --icon build/app-icon.ico --collect-data certifi --add-data "VERSION${{ matrix.os == 'windows-latest' && ';' || ':' }}." --add-data "assets/app-icon.png${{ matrix.os == 'windows-latest' && ';' || ':' }}." main.py
+        args=(--onefile --name EDOPro-HD-Sync --collect-data certifi)
+        case "${{ matrix.os }}" in
+          windows-latest)
+            args+=(--windowed --icon build/app-icon.ico)
+            args+=(--add-data "VERSION;." --add-data "assets/app-icon.png;.")
+            ;;
+          macos-latest)
+            # PyInstaller converts the PNG to the .icns a bundle needs.
+            args+=(--windowed --icon assets/app-icon.png)
+            args+=(--add-data "VERSION:." --add-data "assets/app-icon.png:.")
+            ;;
+          *)
+            args+=(--icon build/app-icon.ico)
+            args+=(--add-data "VERSION:." --add-data "assets/app-icon.png:.")
+            ;;
+        esac
+        pyinstaller "${args[@]}" main.py
 
     # The PE subsystem byte is the difference between "double-click shows one
     # clean window" and "double-click shows a stray black console too".
@@ -98,10 +118,11 @@ jobs:
     - name: Smoke test packaged binary
       shell: bash
       run: |
-        binary="dist/EDOPro-HD-Sync"
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          binary="${binary}.exe"
-        fi
+        case "${{ matrix.os }}" in
+          windows-latest) binary="dist/EDOPro-HD-Sync.exe" ;;
+          macos-latest)   binary="dist/EDOPro-HD-Sync.app/Contents/MacOS/EDOPro-HD-Sync" ;;
+          *)              binary="dist/EDOPro-HD-Sync" ;;
+        esac
         "$binary" --health-check --quiet
 
     # NOTE: Windows code signing intentionally lives OUTSIDE this job.
@@ -146,11 +167,19 @@ jobs:
         rm -rf "$bundleDir" "dist/$archive"
         mkdir -p "$bundleDir"
 
-        mv dist/EDOPro-HD-Sync "$bundleDir/EDOPro-HD-Sync"
-        chmod +x "$bundleDir/EDOPro-HD-Sync"
+        mv dist/EDOPro-HD-Sync.app "$bundleDir/EDOPro HD Sync.app"
+        chmod +x "$bundleDir/EDOPro HD Sync.app/Contents/MacOS/EDOPro-HD-Sync"
+
+        # Finder and the menu bar should read "EDOPro HD Sync", not the file name.
+        plist="$bundleDir/EDOPro HD Sync.app/Contents/Info.plist"
+        /usr/libexec/PlistBuddy -c "Set :CFBundleName EDOPro HD Sync" "$plist" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName EDOPro HD Sync" "$plist" 2>/dev/null \
+          || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string EDOPro HD Sync" "$plist" 2>/dev/null || true
+
         cp release_assets/ReadMe-MacOS.txt "$bundleDir/ReadMe.txt"
 
-        cd dist && zip -r "$archive" "EDOPro HD Sync"
+        # -y keeps symlinks as symlinks so the bundle survives the round trip.
+        cd dist && zip -ry "$archive" "EDOPro HD Sync"
 
     - name: Package (Linux)
       if: matrix.os == 'ubuntu-latest'
@@ -176,27 +205,43 @@ jobs:
       run: |
         version="${{ steps.release_version.outputs.value }}"
         case "${{ matrix.os }}" in
-          windows-latest) archive="dist/EDOPro-HD-Sync-Windows-v${version}.zip"; app="EDOPro HD Sync/EDOPro-HD-Sync.exe" ;;
-          macos-latest)   archive="dist/EDOPro-HD-Sync-macOS-v${version}.zip";   app="EDOPro HD Sync/EDOPro-HD-Sync" ;;
-          *)              archive="dist/EDOPro-HD-Sync-Linux-v${version}.zip";   app="EDOPro HD Sync/EDOPro-HD-Sync" ;;
+          windows-latest) archive="dist/EDOPro-HD-Sync-Windows-v${version}.zip"; app="EDOPro-HD-Sync.exe" ;;
+          macos-latest)   archive="dist/EDOPro-HD-Sync-macOS-v${version}.zip";   app="EDOPro HD Sync.app" ;;
+          *)              archive="dist/EDOPro-HD-Sync-Linux-v${version}.zip";   app="EDOPro-HD-Sync" ;;
         esac
 
         rm -rf dist/_verify && mkdir -p dist/_verify
         unzip -q "$archive" -d dist/_verify
+        root="dist/_verify/EDOPro HD Sync"
 
-        files="$(cd dist/_verify && find . -type f | sort)"
-        count="$(printf '%s\n' "$files" | wc -l | tr -d ' ')"
+        # What the user sees on unzipping: the app and a ReadMe, nothing else.
+        # On macOS the app is a .app bundle, which Finder shows as one icon.
+        entries="$(cd "$root" && ls -1 | sort)"
+        count="$(printf '%s\n' "$entries" | wc -l | tr -d ' ')"
         if [ "$count" != "2" ]; then
-          echo "::error::Expected 2 files in the zip (the app and ReadMe.txt), found ${count}:"
-          printf '%s\n' "$files"
+          echo "::error::Expected 2 items in the zip (the app and ReadMe.txt), found ${count}:"
+          printf '%s\n' "$entries"
           exit 1
         fi
-        if [ ! -f "dist/_verify/$app" ] || [ ! -f "dist/_verify/EDOPro HD Sync/ReadMe.txt" ]; then
+        if [ ! -e "$root/$app" ] || [ ! -f "$root/ReadMe.txt" ]; then
           echo "::error::The zip does not contain the app and ReadMe.txt at the top level:"
-          printf '%s\n' "$files"
+          printf '%s\n' "$entries"
           exit 1
         fi
-        if [ "${{ matrix.os }}" != "windows-latest" ] && [ ! -x "dist/_verify/$app" ]; then
+
+        if [ "${{ matrix.os }}" = "macos-latest" ]; then
+          exe="$root/$app/Contents/MacOS/EDOPro-HD-Sync"
+          if [ ! -x "$exe" ]; then
+            echo "::error::The .app bundle has no executable inside - it would not launch."
+            exit 1
+          fi
+          # A bare Unix executable makes Finder open Terminal to run it. Only a
+          # bundle avoids that, so prove we actually shipped one.
+          if [ ! -f "$root/$app/Contents/Info.plist" ]; then
+            echo "::error::macOS app is not a real .app bundle - double-clicking it would open a Terminal window."
+            exit 1
+          fi
+        elif [ "${{ matrix.os }}" != "windows-latest" ] && [ ! -x "$root/$app" ]; then
           echo "::error::The app is not executable inside the zip - users would get a permissions error."
           exit 1
         fi

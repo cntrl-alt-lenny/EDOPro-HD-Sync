@@ -1,46 +1,40 @@
 EDOPro HD Sync for macOS
 ========================
 
-What it does
-------------
-Downloads the missing HD card artwork for EDOPro (ProjectIgnis), so your
-cards look sharp instead of blurry. Rush Duel, anime, GOAT, Pre-Errata and
-alternate artworks are all covered, plus the playmat art for Field Spells.
-
 How to use it
 -------------
 1. Unzip the download (double-click the .zip in Finder).
-2. Double-click EDOPro-HD-Sync
-3. It finds your ProjectIgnis folder and shows it in the window. If it got
-   the wrong one, press "Change..." and pick the right folder.
-4. Tick what you want, then press Start.
+2. Open the "EDOPro HD Sync" folder and double-click EDOPro HD Sync
+3. Tick what you want in the window that opens, then press Start.
 
-That's it. There is nothing to install, and nothing is left behind on your
-Mac - the app is this one file, and you can put it wherever you like.
+The app finds your EDOPro folder on its own and shows it at the top of
+the window. Press "Change..." if it picked the wrong one.
 
 If macOS asks the very first time
 ---------------------------------
-Because the file came from the web, macOS may refuse to open it once.
-RIGHT-CLICK EDOPro-HD-Sync and choose "Open" (then "Open" again). After
-that it opens normally on a double-click.
+Because the app came from the web, macOS may refuse to open it the first
+time. RIGHT-CLICK "EDOPro HD Sync" and choose "Open", then "Open" again.
+After that it opens normally with a double-click.
+
+If macOS still refuses, open System Settings > Privacy & Security,
+scroll down, and click "Open Anyway" next to EDOPro HD Sync.
 
 Helpful notes
 -------------
-- A Terminal window opens alongside the app window. That is normal - you
-  can ignore it, and closing the app closes both.
-- The app takes a second or two to start. That is normal: it unpacks itself
-  each time so it can stay a single file.
-- Only missing artwork is downloaded, so repeat runs are quick. Tick
-  "Re-download everything" for a full refresh.
-- "Only cards from my decks" is much faster on a fresh install - it grabs
-  just the cards in your saved decks.
+- Everything happens in one window: tick what you want (field art,
+  only your decks, textures, repair), press Start, and watch the progress.
+- Nothing is installed. The app is one item you can put anywhere and
+  delete when you're done - nothing is left behind on your Mac.
+- Only missing artwork is downloaded, so repeat runs are fast. Tick
+  "Re-download everything" in the window for a full refresh.
 - "Show coverage" tells you how much artwork you have without downloading.
-- The app tells you when a new version is out. Download it from
-  https://github.com/cntrl-alt-lenny/EDOPro-HD-Sync/releases and replace
-  this file with the new one.
+- Rush Duel, anime, GOAT, Pre-Errata, and alternate artworks are all
+  covered, plus the playmat art for Field Spells.
+- When a newer version is out, the app tells you - download it from the
+  Releases page and replace this one.
 
 Quick sanity check
 ------------------
 Advanced users can run a quick offline self-test in Terminal:
 
-  ./EDOPro-HD-Sync --health-check
+  "EDOPro HD Sync.app/Contents/MacOS/EDOPro-HD-Sync" --health-check
