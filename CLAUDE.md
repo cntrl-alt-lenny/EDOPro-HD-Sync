@@ -76,6 +76,15 @@ From these it builds two maps:
 ### Field Spell playmat art
 Field Spells (datas.type has both `0x2` SPELL and `0x80000` FIELD bits — `FIELD_SPELL_TYPE`) also get their cropped playmat artwork downloaded into `pics/field/{id}.jpg` from `https://images.ygoprodeck.com/images/cards_cropped/{id}.jpg`. EDOPro reads `.png` or `.jpg` there. Runs after the card sync, is incremental, has its own failure cache (`failed_fields.json`), is covered by `--repair`, and can be disabled with `--no-field-art` (or `"field_art": false` in config.json).
 
+### GOAT / Pre-Errata artwork: sharpness vs. correct wording
+`build_download_candidates()` owns the whole ordering, and it is the only place that decides this. It splits sources into the card's **own** artwork (its ID on YGOProDeck, then on ProjectIgnis) and **substitutes** (manual map, base-card name-match, pre-errata offset — all of them another card's picture).
+
+By default the sharpest image wins: substitutes come before the ProjectIgnis fallback, so a GOAT/Pre-Errata entry with no artwork of its own borrows the base card's HD art. That is what keeps ~209 of them as sharp as everything else — but the base card carries the **errata'd** rules text, so those cards display wording they do not have. Measured on a real 24,409-card install: of 67 Pre-Errata entries, 43 got their own art, 18 borrowed the base card's, 6 used the manual map; all 191 GOAT entries borrowed the base card's.
+
+`original_text` (tick-box "Original GOAT / Pre-Errata wording", `--original-text`, default off) flips that for era entries only: own artwork first, substitutes still after it, so a card with no image of its own anywhere ends up no worse off. ProjectIgnis hosts a distinct era-correct image for every one of them, but only at 177x254 — hence the trade-off, and hence it being a choice rather than a fix.
+
+**A card that already has an image is never re-downloaded, so the setting would do nothing on its own.** `_should_refresh_era_art()` detects the flip by comparing `cfg.original_text` against `cfg.saved_original_text` (persisted in config.json via `save_setting`) and deletes just those few hundred images so they re-download — never on `--dry-run` (it would delete without replacing) and never under `--force` (which already refetches everything). The new value is written back only if the run was not cancelled, so an interrupted refresh re-runs next time instead of stranding cards with no image.
+
 ### GOAT / Pre-Errata trick
 Cards like "Dark Magician GOAT" have a custom DB ID but the same artwork as "Dark Magician". The suffix-stripping logic removes known suffixes (` GOAT`, ` (Pre-Errata)`, etc.) and looks up the base name in `name_to_official` to find the real Konami ID, then downloads that HD image. If a Pre-Errata card's base name is missing from the scanned DBs, its GOAT DB ID is usually the real passcode + 10, so the downloader tries `card_id - 10` before falling back to ProjectIgnis.
 

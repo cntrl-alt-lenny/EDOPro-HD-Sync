@@ -216,6 +216,7 @@ class DownloadCardOutcomeTests(unittest.TestCase):
             "sources": {"official": "http://official", "backup": "http://backup"},
             "timeout": 1,
             "max_retries": 1,
+            "original_text": False,
         }
         values.update(overrides)
         return SimpleNamespace(**values)

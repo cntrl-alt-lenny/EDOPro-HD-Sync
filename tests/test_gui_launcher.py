@@ -27,6 +27,7 @@ def _cfg(**overrides):
         "textures": None,
         "textures_pack": None,
         "field_art": True,
+        "original_text": False,
         "save_report": False,
         "interactive_prompts": True,
     }

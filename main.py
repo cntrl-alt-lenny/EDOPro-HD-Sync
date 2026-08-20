@@ -26,6 +26,7 @@ from time import perf_counter
 import aiohttp
 import certifi
 
+import config as config_module
 import gui
 from config import BUILTIN_MANUAL_MAP, DEFAULTS, Config, find_edopro_folder
 
@@ -992,6 +993,69 @@ def _remove_quietly(path: str) -> None:
         os.remove(path)
 
 
+# How a winning source is counted in the summary.
+SUCCESS_KIND = {"manual-map": "ok_mapped", "backup": "ok_fallback"}
+
+
+def build_download_candidates(
+    card_id: int,
+    official_matches: list[int],
+    manual_match: str | None,
+    is_pre_errata_miss: bool,
+    is_suffix_match: bool,
+    sources: dict,
+    original_text: bool = False,
+) -> list[tuple[str, str]]:
+    """Return (reason, url) pairs to try in order; the first success wins.
+
+    Two orderings, and the difference only ever applies to GOAT/Pre-Errata
+    entries:
+
+    Normally the sharpest image wins. Those entries usually have no artwork of
+    their own on YGOProDeck, so they borrow the base card's HD art - that is
+    what makes 200-odd of them look as sharp as everything else.
+
+    With original_text on, the card's own artwork comes first instead. The
+    whole point of a Pre-Errata entry is the wording it was printed with, and
+    the base card carries the errata'd text, so borrowing its art makes the
+    card state rules it does not have. The substitutes still follow, so a card
+    with no artwork of its own anywhere ends up no worse off than before.
+    """
+    official_source = sources["official"]
+
+    # The card's own artwork, sharpest source first.
+    own: list[tuple[str, str]] = [("direct-id", f"{official_source}/{card_id}.jpg")]
+    if "backup" in sources:
+        own.append(("backup", f"{sources['backup']}/{card_id}.jpg"))
+
+    # Another card's artwork, standing in for this one.
+    substitutes: list[tuple[str, str]] = []
+    if manual_match:
+        substitutes.append(("manual-map", f"{official_source}/{manual_match}.jpg"))
+    if is_suffix_match:
+        for official_id in official_matches:
+            if official_id != card_id:
+                substitutes.append(("name-match", f"{official_source}/{official_id}.jpg"))
+    if is_pre_errata_miss and card_id >= 10:
+        offset_id = card_id - 10
+        if not any(url.endswith(f"/{offset_id}.jpg") for _, url in substitutes):
+            substitutes.append(("pre-errata-offset", f"{official_source}/{offset_id}.jpg"))
+
+    if original_text and (is_suffix_match or is_pre_errata_miss):
+        return own + substitutes
+
+    # Default: the pinned override, the card's own ID on the big CDN, the
+    # stand-ins, and the small community server last of all.
+    manual = [c for c in substitutes if c[0] == "manual-map"]
+    rest = [c for c in substitutes if c[0] != "manual-map"]
+    return manual + own[:1] + rest + own[1:]
+
+
+def is_era_entry(name: str, suffixes: list[str]) -> bool:
+    """True for GOAT / Pre-Errata entries - the cards original_text affects."""
+    return any(name.endswith(suffix) for suffix in suffixes)
+
+
 async def download_card(
     session: aiohttp.ClientSession,
     card_id: int,
@@ -1014,32 +1078,16 @@ async def download_card(
             progress.advance(task_id)
         return
 
-    official_source = cfg.sources["official"]
     timeout = aiohttp.ClientTimeout(total=cfg.timeout)
-
-    # Build download candidates in priority order
-    candidates: list[tuple[str, str]] = []
-
-    # 1. Manual override
-    if manual_match:
-        candidates.append(("manual-map", f"{official_source}/{manual_match}.jpg"))
-
-    # 2. Try the card's own ID on YGOProDeck. Official, Rush Duel, and
-    #    anime/custom cards are all hosted there under the same IDs EDOPro
-    #    uses, so every card gets a direct attempt.
-    candidates.append(("direct-id", f"{official_source}/{card_id}.jpg"))
-
-    # 3. For GOAT/Pre-Errata suffix cards, try the base card's official IDs
-    if is_suffix_match:
-        for official_id in official_matches:
-            if official_id != card_id:
-                candidates.append(("name-match", f"{official_source}/{official_id}.jpg"))
-
-    # 4. Pre-Errata offset fallback (card_id - 10)
-    if is_pre_errata_miss and card_id >= 10:
-        offset_id = card_id - 10
-        if not any(url.endswith(f"/{offset_id}.jpg") for _, url in candidates):
-            candidates.append(("pre-errata-offset", f"{official_source}/{offset_id}.jpg"))
+    candidates = build_download_candidates(
+        card_id,
+        official_matches,
+        manual_match,
+        is_pre_errata_miss,
+        is_suffix_match,
+        cfg.sources,
+        cfg.original_text,
+    )
 
     if cfg.dry_run:
         stats.planned += 1
@@ -1056,19 +1104,7 @@ async def download_card(
     for reason, url in candidates:
         result = await _try_download(session, url, filepath, timeout, cfg.max_retries)
         if result is FetchResult.OK:
-            stats.record_success(card_id, "ok_mapped" if reason == "manual-map" else "ok_hd")
-            if progress and task_id is not None:
-                progress.advance(task_id)
-            return
-        if result is FetchResult.ERROR:
-            saw_transient = True
-
-    # 5. ProjectIgnis backup
-    if "backup" in cfg.sources:
-        url = f"{cfg.sources['backup']}/{card_id}.jpg"
-        result = await _try_download(session, url, filepath, timeout, cfg.max_retries)
-        if result is FetchResult.OK:
-            stats.record_success(card_id, "ok_fallback")
+            stats.record_success(card_id, SUCCESS_KIND.get(reason, "ok_hd"))
             if progress and task_id is not None:
                 progress.advance(task_id)
             return
@@ -1528,9 +1564,27 @@ def _should_show_gui(cfg: Config) -> bool:
     return cfg.textures is None and not cfg.textures_pack
 
 
+def _should_refresh_era_art(cfg: Config) -> bool:
+    """True when the GOAT/Pre-Errata artwork setting has been flipped.
+
+    Those cards already have an image, so nothing would change without
+    re-fetching them. --force already re-downloads everything, and a dry run
+    must never delete anything.
+    """
+    if cfg.dry_run or cfg.force:
+        return False
+    return bool(cfg.original_text) != bool(cfg.saved_original_text)
+
+
+def _run_was_cancelled(cfg: Config) -> bool:
+    """True when the window's Cancel button stopped this run part-way."""
+    return cfg.cancel_event is not None and cfg.cancel_event.is_set()
+
+
 def _apply_gui_choices(cfg: Config, choices: dict) -> None:
     """Copy the window's tick-boxes onto the config and mute console questions."""
     cfg.field_art = bool(choices.get("field_art", cfg.field_art))
+    cfg.original_text = bool(choices.get("original_text", cfg.original_text))
     cfg.my_decks = bool(choices.get("my_decks", False))
     cfg.textures = bool(choices.get("textures", False))
     cfg.repair = bool(choices.get("repair", False))
@@ -1774,6 +1828,23 @@ async def run(cfg: Config):
             )
         else:
             console.print("[dim]Repair: no broken images found.[/dim]")
+
+    # Flipping "original artwork" changes which image these cards should have,
+    # and they already have one, so nothing would happen without a nudge.
+    # Re-fetch just those few hundred rather than the whole collection.
+    if _should_refresh_era_art(cfg):
+        era_ids = [cid for cid, nm in id_to_name.items() if is_era_entry(nm, cfg.suffixes)]
+        for cid in era_ids:
+            _remove_quietly(os.path.join(cfg.pics_path, f"{cid}.jpg"))
+            failure_cache.pop(cid, None)
+        if era_ids:
+            wording = "original" if cfg.original_text else "sharpest available"
+            console.print(
+                f"[yellow]Artwork setting changed to {wording} — refreshing "
+                f"{len(era_ids):,} GOAT/Pre-Errata card(s).[/yellow]"
+            )
+            if cfg.notice_sink is not None:
+                cfg.notice_sink(f"Refreshing {len(era_ids):,} GOAT/Pre-Errata cards")
 
     if cfg.force:
         missing_ids = list(id_to_name.keys())
@@ -2049,6 +2120,16 @@ async def run(cfg: Config):
             if os.path.exists(os.path.join(cfg.pics_path, f"{cid}.jpg")):
                 del failure_cache[cid]
         save_failure_cache(failure_cache_path, failure_cache)
+
+    # Only once the refresh has actually run: recording it after a cancelled
+    # run would strand the cards it never got to with no image at all.
+    if (
+        not cfg.dry_run
+        and cfg.original_text != cfg.saved_original_text
+        and not _run_was_cancelled(cfg)
+    ):
+        config_module.save_setting(cfg.config_path, "original_text", cfg.original_text)
+        cfg.saved_original_text = cfg.original_text
 
     if missing_fields and not cfg.dry_run:
         now_ts = datetime.now().timestamp()

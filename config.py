@@ -41,6 +41,7 @@ DEFAULTS = {
     "timeout": 30,
     "save_report": False,
     "field_art": True,
+    "original_text": False,
     # YGOProDeck hosts official, Rush Duel, and anime/custom cards under the
     # same IDs EDOPro uses; it's a big CDN, so it takes the bulk of the load.
     # "backup"/"field_backup" is ProjectIgnis's own image server — the same one
@@ -124,16 +125,21 @@ def generate_default_config(path: str) -> None:
     print(f"Generated default config at {path}")
 
 
-def save_edopro_path(path: str, edopro_path: str) -> bool:
-    """Update only the remembered EDOPro path in the config file."""
+def save_setting(path: str, key: str, value) -> bool:
+    """Update a single setting in the config file, leaving the rest alone."""
     config_data = _load_config_file(path)
-    config_data["edopro_path"] = edopro_path
+    config_data[key] = value
     try:
         _write_config_file(path, config_data)
     except OSError as exc:
         print(f"Warning: Could not write {path}: {exc}")
         return False
     return True
+
+
+def save_edopro_path(path: str, edopro_path: str) -> bool:
+    """Update only the remembered EDOPro path in the config file."""
+    return save_setting(path, "edopro_path", edopro_path)
 
 
 def folder_has_card_databases(path: str) -> bool:
@@ -439,6 +445,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show artwork coverage and disk usage, then exit without downloading.",
     )
     p.add_argument(
+        "--original-text",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "For GOAT and Pre-Errata cards, use each card's own artwork instead of the "
+            "modern reprint's. Era-correct wording, but a lower-resolution image for "
+            "those cards (default: off)."
+        ),
+    )
+    p.add_argument(
         "--textures",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -548,6 +564,22 @@ class Config:
             "field_art",
             _pick_value(self.cli.field_art, file_cfg.get("field_art"), DEFAULTS["field_art"]),
             DEFAULTS["field_art"],
+        )
+        self.original_text: bool = _ensure_bool(
+            "original_text",
+            _pick_value(
+                self.cli.original_text,
+                file_cfg.get("original_text"),
+                DEFAULTS["original_text"],
+            ),
+            DEFAULTS["original_text"],
+        )
+        # What the last sync used, so flipping the setting can refresh just the
+        # cards it affects instead of the whole collection.
+        self.saved_original_text: bool = _ensure_bool(
+            "original_text",
+            file_cfg.get("original_text", DEFAULTS["original_text"]),
+            DEFAULTS["original_text"],
         )
         self.stats: bool = self.cli.stats
         self.no_pause: bool = self.cli.no_pause

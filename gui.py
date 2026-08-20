@@ -63,6 +63,12 @@ CHECKBOX_GROUPS = [
                 "Much faster — just the cards you actually play",
                 False,
             ),
+            (
+                "original_text",
+                "Original GOAT / Pre-Errata wording",
+                "Era-correct text on those cards, but a lower-resolution image",
+                False,
+            ),
         ],
     ),
     (
@@ -485,7 +491,10 @@ class _App:
         self.folder_hint.grid(row=1, column=0, columnspan=2, sticky="w", pady=(3, 0))
 
         self.variables: dict[str, tk.BooleanVar] = {}
-        defaults = {"field_art": getattr(self.cfg, "field_art", True)}
+        defaults = {
+            "field_art": getattr(self.cfg, "field_art", True),
+            "original_text": getattr(self.cfg, "original_text", False),
+        }
         for section, boxes in CHECKBOX_GROUPS:
             ttk.Label(f, text=section, style="Section.TLabel").grid(sticky="w", pady=(0, 5))
             card = ttk.Frame(f, style="Card.TFrame", padding=(16, 11, 16, 5))

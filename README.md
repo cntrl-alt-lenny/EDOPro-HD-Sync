@@ -43,6 +43,7 @@ One download per platform on the [Releases page](https://github.com/cntrl-alt-le
 - **One simple window** — tick what you want, press Start, and watch the live progress and results right in the window. Same experience on Windows, macOS, and Linux.
 - **Every card type covered** — official, Rush Duel, and anime/custom cards are all fetched directly by the same IDs EDOPro uses.
 - **Field Spell playmat art** — the cropped artwork EDOPro displays on the board is downloaded into `pics/field/` automatically.
+- **GOAT / Pre-Errata wording** — those entries normally borrow the base card's HD art, which carries the *errata'd* text. Tick *Original GOAT / Pre-Errata wording* (or `--original-text`) to use each card's own image instead: the wording it was actually printed with, at the lower resolution that's all that exists for it.
 - **Deck-first sync** — tick *Only cards from my decks* (or use `--my-decks`) and a fresh install is playable in minutes instead of hours.
 - **Coverage at a glance** — the *Show coverage* button (or `--stats`) tells you how complete your artwork is without downloading a thing.
 - **Repair mode** — tick *Repair broken images* (or use `--repair`) to find and re-fetch corrupt or half-downloaded files.
@@ -75,6 +76,7 @@ The packaged app needs no flags — the options window covers the common choices
 | `--stats` | Show artwork coverage and disk usage, then exit. |
 | `--repair` | Re-download images that are missing, corrupt, or not valid JPEGs. |
 | `--field-art` / `--no-field-art` | Field Spell playmat art into `pics/field/` (default: on). |
+| `--original-text` / `--no-original-text` | GOAT/Pre-Errata cards use their **own** artwork instead of the modern reprint's — era-correct wording, lower resolution (default: off). |
 | `--textures` / `--no-textures` | Also download the curated texture pack into `textures/`. |
 | `--textures-pack NAME` | Pick a specific texture pack. |
 | `--gui` / `--no-gui` | Force or skip the tick-box options window. |
